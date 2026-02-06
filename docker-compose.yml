@@ -18,6 +18,7 @@ services:
       # - YTDL_PO_TOKEN=${YTDL_PO_TOKEN}
     volumes:
       - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
       # Optional: Mount cookies file
       # - ./cookies.txt:/app/data/cookies.txt:ro
     ports:

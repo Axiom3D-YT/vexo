@@ -4,6 +4,8 @@ Settings Cog - Server settings commands
 import logging
 
 import discord
+import aiohttp
+import socket
 from discord import app_commands
 from discord.ext import commands
 
@@ -169,8 +171,27 @@ class SettingsCog(commands.Cog):
         await interaction.response.send_message("🔄 Restarting bot...", ephemeral=True)
         logger.warning(f"Bot restart requested by {interaction.user} ({interaction.user.id})")
         
-        import sys
+        # Try Docker restart first
         import os
+        if os.path.exists("/var/run/docker.sock"):
+            try:
+                hostname = socket.gethostname()
+                # Use aiohttp with Unix socket
+                connector = aiohttp.UnixConnector(path="/var/run/docker.sock")
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    url = f"http://localhost/containers/{hostname}/restart"
+                    async with session.post(url) as resp:
+                        if resp.status == 204:
+                            logger.info("Docker restart command sent successfully")
+                            return
+                        else:
+                            text = await resp.text()
+                            logger.error(f"Docker restart failed: {resp.status} - {text}")
+            except Exception as e:
+                logger.error(f"Failed to restart via Docker socket: {e}")
+
+        # Fallback to process exit
+        logger.info("Falling back to process exit")
         
         # Try clean shutdown first
         try:
