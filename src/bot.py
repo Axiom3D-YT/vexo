@@ -46,10 +46,7 @@ class MusicBot(commands.Bot):
         """Called when the bot is starting up."""
         logger.info("Setting up bot...")
         
-        # Store start time for uptime tracking
-        self._start_time = datetime.now(UTC)
-        
-        # Initialize database
+        # Database
         from src.config import config
         from src.database.connection import DatabaseManager
         from src.database.crud import SongCRUD, UserCRUD, GuildCRUD, PlaybackCRUD, PreferenceCRUD, ReactionCRUD

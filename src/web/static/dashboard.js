@@ -105,6 +105,8 @@ function updateStatus(data) {
         if (sidebarLatency) sidebarLatency.textContent = `${data.latency_ms || 0}ms`;
         if (cpu) cpu.textContent = data.cpu_percent || 0;
         if (ram) ram.textContent = data.ram_percent || 0;
+        const uptime = document.getElementById('stat-uptime');
+        if (uptime) uptime.textContent = formatUptime(data.uptime_seconds);
     } catch (e) { console.error('Error updating status', e); }
 }
 
