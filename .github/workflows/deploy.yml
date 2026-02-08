@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: jamesabrownlee/vexo
+  IMAGE_NAME: axiom3d-yt/vexo
 
 jobs:
   build:

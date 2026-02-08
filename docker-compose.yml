@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   musicbot:
-    image: ghcr.io/jamesabrownlee/vexo:latest
+    image: ghcr.io/axiom3d-yt/vexo:latest
     build: .
     container_name: smart-music-bot
     restart: unless-stopped
