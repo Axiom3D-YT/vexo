@@ -82,6 +82,13 @@ class NowPlayingView(discord.ui.View):
     async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = self.cog.get_player(self.guild_id)
         if player.voice_client:
+            # Ensure process is stopped properly
+            if player.voice_client.is_playing() or player.voice_client.is_paused():
+                player.voice_client.stop()
+            
+            # Additional cleanup for FFmpeg process if needed
+            # (discord.py's FFmpegAudio usually handles this, but we can be defensive)
+            
             # Clear queue
             while not player.queue.empty():
                 try:
@@ -240,7 +247,12 @@ class MusicCog(commands.Cog):
             return
         
         track = results[0]
-        
+    
+        # Ensure duration is present
+        if track.duration_seconds is None:
+            details = await self.youtube.get_track_info(track.video_id)
+            if details and details.duration_seconds:
+                track.duration_seconds = details.duration_seconds
         # Check max duration
         if hasattr(self.bot, "db") and self.bot.db:
             from src.database.crud import GuildCRUD
@@ -749,6 +761,8 @@ class MusicCog(commands.Cog):
                                  await lib_crud.add_to_library(target_user_id, item.song_db_id, "request")
                     except Exception as e:
                         logger.error(f"Failed to log playback start: {e}")
+                        # Ensure we don't crash playback if DB logging fails
+                        pass
                 
                 # 2. Get stream URL (Use pre-fetched if available)
                 url = item.url
@@ -1012,6 +1026,42 @@ class MusicCog(commands.Cog):
             yt_url = f"https://youtube.com/watch?v={item.video_id}"
             embed.add_field(name="🔗 Link", value=f"[YouTube]({yt_url})", inline=True)
             
+            # ⏭️ NEXT SONG DETAILS
+            if not player.queue.empty():
+                next_item = list(player.queue._queue)[0]
+                
+                # Format next duration
+                next_dur_str = "Unknown"
+                if next_item.duration_seconds:
+                    m, s = divmod(next_item.duration_seconds, 60)
+                    next_dur_str = f"{m}:{s:02d}"
+                else:
+                    # Try proactive fetch for next item if missing (since we are here anyway)
+                    # Note: _prepare_next_song usually handles this but we want to be SURE
+                    details = await self.youtube.get_track_info(next_item.video_id)
+                    if details and details.duration_seconds:
+                        next_item.duration_seconds = details.duration_seconds
+                        m, s = divmod(next_item.duration_seconds, 60)
+                        next_dur_str = f"{m}:{s:02d}"
+
+                # Format "For Who"
+                next_for = "Nobody"
+                if next_item.for_user_id:
+                    next_for = f"<@{next_item.for_user_id}>"
+                elif next_item.requester_id:
+                    next_for = f"<@{next_item.requester_id}>"
+
+                # Format "Reason" (Strategy)
+                next_reason = next_item.discovery_reason or "Requested"
+                
+                next_details = (
+                    f"**{next_item.title}**\n"
+                    f"🎤 {next_item.artist} | ⏳ {next_dur_str}\n"
+                    f"🎯 For: {next_for}\n"
+                    f"✨ Why: {next_reason}"
+                )
+                embed.add_field(name="⏭️ Up Next", value=next_details, inline=False)
+            
             # Create view with buttons
             view = NowPlayingView(self, player.guild_id)
             
@@ -1052,6 +1102,9 @@ class MusicCog(commands.Cog):
                     
                     # Add to queue
                     player.queue.put_nowait(item)
+                    
+                    # USER REQUEST: Log confirmed proactive discovery item
+                    logger.info(f"⏭️ Next song confirmed for guild {player.guild_id}: {item.title} by {item.artist} | Strategy: {item.discovery_source} ({item.discovery_reason})")
                     break
 
             # 2. Extract stream URL for the first item in queue if missing

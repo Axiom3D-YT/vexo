@@ -134,7 +134,7 @@ class YouTubeService:
                     video_id=t["videoId"],
                     title=t.get("title", "Unknown"),
                     artist=artist,
-                    duration_seconds=t.get("length_seconds") or t.get("duration_seconds"),
+                    duration_seconds=t.get("length_seconds") or t.get("duration_seconds") or (self._parse_duration(t.get("length")) if t.get("length") else None),
                     year=t.get("year"),
                 ))
             
@@ -166,7 +166,7 @@ class YouTubeService:
                     video_id=t["videoId"],
                     title=t.get("title", "Unknown"),
                     artist=artist,
-                    duration_seconds=t.get("duration_seconds"),
+                    duration_seconds=t.get("duration_seconds") or (self._parse_duration(t.get("duration")) if t.get("duration") else None),
                 ))
             
             return tracks
@@ -174,6 +174,37 @@ class YouTubeService:
             logger.error(f"Error getting playlist: {e}")
             return []
     
+    @retry_with_backoff()
+    async def get_track_info(self, video_id: str) -> YTTrack | None:
+        """Get full track info for a specific video."""
+        loop = asyncio.get_event_loop()
+        try:
+            r = await loop.run_in_executor(
+                None,
+                partial(self.yt.get_song, videoId=video_id)
+            )
+            
+            video_details = r.get("videoDetails", {})
+            if not video_details:
+                return None
+                
+            artist = "Unknown"
+            if video_details.get("artists") and len(video_details["artists"]) > 0:
+                artist = video_details["artists"][0].get("name", "Unknown")
+            elif video_details.get("author"):
+                artist = video_details["author"]
+
+            return YTTrack(
+                video_id=video_details.get("videoId"),
+                title=video_details.get("title", "Unknown"),
+                artist=artist,
+                duration_seconds=int(video_details["lengthSeconds"]) if video_details.get("lengthSeconds") else None,
+                thumbnail_url=video_details.get("thumbnail", {}).get("thumbnails", [{}])[-1].get("url")
+            )
+        except Exception as e:
+            logger.error(f"Error getting track info: {e}")
+            return None
+
     async def get_stream_url(self, video_id: str) -> str | None:
         """Get the audio stream URL for a video using yt-dlp."""
         loop = asyncio.get_event_loop()

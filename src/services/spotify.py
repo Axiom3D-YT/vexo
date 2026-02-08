@@ -1,15 +1,34 @@
-"""
-Spotify API Wrapper
-"""
 import asyncio
 import logging
+import random
 from dataclasses import dataclass
-from functools import partial
+from functools import partial, wraps
 
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
 logger = logging.getLogger(__name__)
+
+
+def retry_with_backoff(retries=3, initial_backoff=1):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            x = 0
+            while True:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    if x == retries:
+                        logger.error(f"Spotify failed after {retries} retries: {e}")
+                        raise
+                    # User requested 1s retry logic
+                    sleep = initial_backoff + random.uniform(0, 0.5)
+                    logger.warning(f"Spotify Retry {x + 1}/{retries} for {func.__name__} after {sleep:.2f}s due to: {e}")
+                    await asyncio.sleep(sleep)
+                    x += 1
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -43,9 +62,11 @@ class SpotifyService:
             auth_manager=SpotifyClientCredentials(
                 client_id=client_id,
                 client_secret=client_secret
-            )
+            ),
+            requests_timeout=1  # User requested ultra-short 1s timeout
         )
     
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def search_track(self, query: str) -> SpotifyTrack | None:
         """Search for a track."""
         loop = asyncio.get_event_loop()
@@ -73,6 +94,7 @@ class SpotifyService:
             logger.error(f"Spotify search error: {e}")
             return None
 
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def search_artist(self, query: str) -> SpotifyArtist | None:
         """Search for an artist."""
         loop = asyncio.get_event_loop()
@@ -96,6 +118,7 @@ class SpotifyService:
             logger.error(f"Spotify artist search error: {e}")
             return None
     
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def get_artist(self, artist_id: str) -> SpotifyArtist | None:
         """Get artist info including genres."""
         loop = asyncio.get_event_loop()
@@ -114,6 +137,7 @@ class SpotifyService:
             logger.error(f"Error getting artist {artist_id}: {e}")
             return None
     
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def get_artists_batch(self, artist_ids: list[str]) -> list[SpotifyArtist]:
         """Get multiple artists in batch (max 50)."""
         if not artist_ids:
@@ -143,6 +167,7 @@ class SpotifyService:
         
         return artists
     
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def get_artist_top_tracks(self, artist_id: str, country: str = "US") -> list[SpotifyTrack]:
         """Get artist's top tracks."""
         loop = asyncio.get_event_loop()
@@ -169,6 +194,7 @@ class SpotifyService:
             logger.error(f"Error getting top tracks: {e}")
             return []
     
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def get_related_artists(self, artist_id: str) -> list[SpotifyArtist]:
         """Get related artists."""
         loop = asyncio.get_event_loop()
@@ -190,6 +216,7 @@ class SpotifyService:
             logger.error(f"Error getting related artists: {e}")
             return []
     
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def get_playlist_tracks(self, playlist_url: str) -> list[SpotifyTrack]:
         """Get all tracks from a Spotify playlist."""
         loop = asyncio.get_event_loop()

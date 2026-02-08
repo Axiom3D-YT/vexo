@@ -164,7 +164,8 @@ class DashboardCog(commands.Cog):
             "latency_ms": round(self.bot.latency * 1000, 2),
             "cpu_percent": psutil.cpu_percent(),
             "ram_percent": psutil.virtual_memory().percent,
-            "process_ram_mb": round(process.memory_info().rss / 1024 / 1024, 2)
+            "process_ram_mb": round(process.memory_info().rss / 1024 / 1024, 2),
+            "uptime_seconds": int((datetime.now(UTC) - self.bot.start_time).total_seconds())
         })
     
     async def _handle_guilds(self, request: web.Request) -> web.Response:
@@ -509,7 +510,8 @@ class DashboardCog(commands.Cog):
         crud = LibraryCRUD(self.bot.db)
         library = await crud.get_library(guild_id=guild_id)
         
-        logger.info(f"Fetched library for guild {guild_id}: {len(library)} entries")
+        log_guild = f"guild {guild_id}" if guild_id else "Global Library"
+        logger.info(f"Fetched library for {log_guild}: {len(library)} entries")
         
         # Serialize timestamps
         for entry in library:

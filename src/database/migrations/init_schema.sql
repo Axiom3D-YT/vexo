@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS playback_history (
     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed BOOLEAN DEFAULT FALSE,
     skip_reason TEXT CHECK(skip_reason IN ('user', 'vote', 'error') OR skip_reason IS NULL),
-    discovery_source TEXT CHECK(discovery_source IN ('user_request', 'similar', 'same_artist', 'wildcard')),
+    discovery_source TEXT CHECK(discovery_source IN ('user_request', 'similar', 'artist', 'wildcard', 'library')),
     discovery_reason TEXT,
     for_user_id INTEGER REFERENCES users(id)
 );

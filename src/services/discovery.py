@@ -145,21 +145,27 @@ class DiscoveryEngine:
         logger.info(f"Discovery for user {turn_user_id} using strategy: {strategy} (avoiding {len(recent_yt_ids)} recent songs)")
         
         # Execute strategy
-        song = await self._execute_strategy(strategy, turn_user_id, recent_yt_ids)
+        track = await self._execute_strategy(strategy, turn_user_id, recent_yt_ids)
         
         # Advance turn for next time
         self.turn_tracker.advance(guild_id)
         
-        if song:
+        if track:
+            # Avoid missing duration at all costs: fetch if missing
+            if track.duration_seconds is None:
+                details = await self.youtube.get_track_info(track.video_id)
+                if details and details.duration_seconds:
+                    track.duration_seconds = details.duration_seconds
+
             return DiscoveredSong(
-                video_id=song.video_id,
-                title=song.title,
-                artist=song.artist,
+                video_id=track.video_id,
+                title=track.title,
+                artist=track.artist,
                 strategy=strategy,
-                reason=self._generate_reason(strategy, song),
+                reason=self._generate_reason(strategy, track),
                 for_user_id=turn_user_id,
-                duration_seconds=song.duration_seconds,
-                year=song.year,
+                duration_seconds=track.duration_seconds,
+                year=track.year
             )
         
         return None

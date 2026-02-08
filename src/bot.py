@@ -38,6 +38,7 @@ class MusicBot(commands.Bot):
         # Will be initialized in setup_hook
         self.db = None
         self.discovery = None
+        self.start_time = datetime.now(UTC)
         self.preferences = None
     
     async def setup_hook(self) -> None:

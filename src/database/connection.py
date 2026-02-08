@@ -57,6 +57,48 @@ class DatabaseManager:
                     await db.commit()
                 except Exception as e:
                     logger.error(f"Migration failed: {e}")
+            
+            # 2. Update playback_history CHECK constraint
+            try:
+                # Check for old constraint by looking at the schema SQL
+                cursor = await db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='playback_history'")
+                row = await cursor.fetchone()
+                if row and "'same_artist'" in row[0] or (row and "'library'" not in row[0]):
+                    logger.info("Migrating: Updating playback_history constraints")
+                    # SQLite doesn't support ALTER TABLE for constraints, must recreate
+                    await db.execute("ALTER TABLE playback_history RENAME TO playback_history_old")
+                    
+                    # Create new table (schema from init_schema.sql will be applied if we re-run it, 
+                    # but let's be explicit and safe here)
+                    await db.execute("""
+                        CREATE TABLE playback_history (
+                            id INTEGER PRIMARY KEY,
+                            session_id TEXT REFERENCES playback_sessions(id),
+                            song_id INTEGER REFERENCES songs(id),
+                            played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            completed BOOLEAN DEFAULT FALSE,
+                            skip_reason TEXT CHECK(skip_reason IN ('user', 'vote', 'error') OR skip_reason IS NULL),
+                            discovery_source TEXT CHECK(discovery_source IN ('user_request', 'similar', 'artist', 'wildcard', 'library')),
+                            discovery_reason TEXT,
+                            for_user_id INTEGER REFERENCES users(id)
+                        )
+                    """)
+                    
+                    # Copy data, mapping same_artist to artist
+                    await db.execute("""
+                        INSERT INTO playback_history (id, session_id, song_id, played_at, completed, skip_reason, discovery_source, discovery_reason, for_user_id)
+                        SELECT id, session_id, song_id, played_at, completed, skip_reason, 
+                               CASE WHEN discovery_source = 'same_artist' THEN 'artist' ELSE discovery_source END,
+                               discovery_reason, for_user_id
+                        FROM playback_history_old
+                    """)
+                    
+                    await db.execute("DROP TABLE playback_history_old")
+                    await db.commit()
+                    logger.info("Database migration: playback_history updated successfully")
+            except Exception as e:
+                logger.error(f"Migration for playback_history failed: {e}")
+                await db.rollback()
     
     @asynccontextmanager
     async def connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:

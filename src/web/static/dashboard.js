@@ -228,10 +228,15 @@ function updateAnalytics(data) {
     try {
         const songsEl = document.getElementById('stat-songs');
         const usersEl = document.getElementById('stat-users');
-        const playsEl = document.getElementById('stat-plays');
+        const elPlays = document.getElementById('stat-plays');
+        if (elPlays) elPlays.textContent = data.total_plays || 0;
+
+        const elUptime = document.getElementById('stat-uptime');
+        if (elUptime && data.uptime_seconds) {
+            elUptime.textContent = formatUptime(data.uptime_seconds);
+        }
         if (songsEl) songsEl.textContent = data.total_songs || 0;
         if (usersEl) usersEl.textContent = data.total_users || 0;
-        if (playsEl) playsEl.textContent = data.total_plays || 0;
 
         // Top songs
         const songTable = document.getElementById('top-songs-table');
@@ -655,4 +660,22 @@ function validateWeights() {
     if (errorEl) {
         errorEl.style.display = (total === 100) ? 'none' : 'block';
     }
+}
+
+function formatUptime(seconds) {
+    if (!seconds) return '0s';
+    const days = Math.floor(seconds / (24 * 3600));
+    seconds %= (24 * 3600);
+    const hours = Math.floor(seconds / 3600);
+    seconds %= 3600;
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    let parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+    return parts.join(' ');
 }
