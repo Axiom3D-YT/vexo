@@ -530,6 +530,19 @@ async function loadSettingsTab() {
 
             const md = document.getElementById('setting-max-duration');
             if (md) md.value = data.max_song_duration || 6;
+
+            // Discovery weights
+            const weights = data.discovery_weights || { similar: 25, artist: 25, wildcard: 25, library: 25 };
+            const wSimilar = document.getElementById('weight-similar');
+            if (wSimilar) wSimilar.value = weights.similar || 0;
+            const wArtist = document.getElementById('weight-artist');
+            if (wArtist) wArtist.value = weights.artist || 0;
+            const wWildcard = document.getElementById('weight-wildcard');
+            if (wWildcard) wWildcard.value = weights.wildcard || 0;
+            const wLibrary = document.getElementById('weight-library');
+            if (wLibrary) wLibrary.value = weights.library || 0;
+
+            validateWeights();
         } catch (e) { console.error(e); }
     }
 }
@@ -574,6 +587,13 @@ async function saveServerSettings() {
     const bufferAmount = document.getElementById('setting-buffer-amount').value;
     const maxDuration = document.getElementById('setting-max-duration').value;
 
+    const weights = {
+        similar: parseInt(document.getElementById('weight-similar').value) || 0,
+        artist: parseInt(document.getElementById('weight-artist').value) || 0,
+        wildcard: parseInt(document.getElementById('weight-wildcard').value) || 0,
+        library: parseInt(document.getElementById('weight-library').value) || 0
+    };
+
     try {
         const res = await fetch(API.settings(currentGuild), {
             method: 'POST',
@@ -581,7 +601,8 @@ async function saveServerSettings() {
             body: JSON.stringify({
                 pre_buffer: preBuffer,
                 buffer_amount: parseInt(bufferAmount),
-                max_song_duration: parseInt(maxDuration)
+                max_song_duration: parseInt(maxDuration),
+                discovery_weights: weights
             })
         });
 
@@ -614,5 +635,24 @@ async function saveSettingsTab() {
     } catch (e) {
         console.error(e);
         alert('Error saving global settings');
+    }
+}
+
+function validateWeights() {
+    const similar = parseInt(document.getElementById('weight-similar').value) || 0;
+    const artist = parseInt(document.getElementById('weight-artist').value) || 0;
+    const wildcard = parseInt(document.getElementById('weight-wildcard').value) || 0;
+    const library = parseInt(document.getElementById('weight-library').value) || 0;
+
+    const total = similar + artist + wildcard + library;
+    const totalEl = document.getElementById('weights-total');
+    if (totalEl) {
+        totalEl.textContent = total;
+        totalEl.style.color = (total === 100) ? 'var(--text-primary)' : 'var(--warning)';
+    }
+
+    const errorEl = document.getElementById('weight-error');
+    if (errorEl) {
+        errorEl.style.display = (total === 100) ? 'none' : 'block';
     }
 }

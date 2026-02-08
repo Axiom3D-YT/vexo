@@ -48,25 +48,27 @@ class SettingsCog(commands.Cog):
     @app_commands.describe(
         similar="Weight for similar songs (0-100)",
         artist="Weight for same artist (0-100)",
-        wildcard="Weight for wildcard/charts (0-100)"
+        wildcard="Weight for wildcard/charts (0-100)",
+        library="Weight for user library (0-100)"
     )
     async def discovery_weights(
         self,
         interaction: discord.Interaction,
         similar: int,
         artist: int,
-        wildcard: int
+        wildcard: int,
+        library: int
     ):
         """Set discovery strategy weights for this server."""
         # Validate
-        if not all(0 <= w <= 100 for w in [similar, artist, wildcard]):
+        if not all(0 <= w <= 100 for w in [similar, artist, wildcard, library]):
             await interaction.response.send_message(
                 "❌ All weights must be between 0 and 100",
                 ephemeral=True
             )
             return
         
-        total = similar + artist + wildcard
+        total = similar + artist + wildcard + library
         if total == 0:
             await interaction.response.send_message(
                 "❌ At least one weight must be greater than 0",
@@ -74,7 +76,7 @@ class SettingsCog(commands.Cog):
             )
             return
         
-        weights = {"similar": similar, "artist": artist, "wildcard": wildcard}
+        weights = {"similar": similar, "artist": artist, "wildcard": wildcard, "library": library}
         
         # Save to database
         if hasattr(self.bot, "db") and self.bot.db:
@@ -86,12 +88,14 @@ class SettingsCog(commands.Cog):
         pct_similar = (similar / total) * 100
         pct_artist = (artist / total) * 100
         pct_wildcard = (wildcard / total) * 100
+        pct_library = (library / total) * 100
         
         await interaction.response.send_message(
             f"🎲 **Discovery weights updated:**\n"
             f"• Similar songs: {pct_similar:.0f}%\n"
             f"• Same artist: {pct_artist:.0f}%\n"
-            f"• Wildcard (charts): {pct_wildcard:.0f}%",
+            f"• Wildcard (charts): {pct_wildcard:.0f}%\n"
+            f"• My Library: {pct_library:.0f}%",
             ephemeral=True
         )
     
@@ -118,16 +122,17 @@ class SettingsCog(commands.Cog):
             )
             
             # Discovery weights
-            weights = all_settings.get("discovery_weights", {"similar": 60, "artist": 10, "wildcard": 30})
+            weights = all_settings.get("discovery_weights", {"similar": 25, "artist": 25, "wildcard": 25, "library": 25})
             total = sum(weights.values())
             if total > 0:
                 weights_text = (
                     f"Similar: {(weights.get('similar', 0) / total) * 100:.0f}%\n"
                     f"Artist: {(weights.get('artist', 0) / total) * 100:.0f}%\n"
-                    f"Wildcard: {(weights.get('wildcard', 0) / total) * 100:.0f}%"
+                    f"Wildcard: {(weights.get('wildcard', 0) / total) * 100:.0f}%\n"
+                    f"Library: {(weights.get('library', 0) / total) * 100:.0f}%"
                 )
             else:
-                weights_text = "Default (60/10/30)"
+                weights_text = "Default (25/25/25/25)"
             embed.add_field(name="🎲 Discovery Weights", value=weights_text, inline=True)
             
             # Autoplay

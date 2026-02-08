@@ -22,7 +22,7 @@ class DiscoveredSong:
     video_id: str
     title: str
     artist: str
-    strategy: str  # 'similar', 'artist', 'wildcard'
+    strategy: str  # 'similar', 'artist', 'wildcard', 'library'
     reason: str  # Human-readable discovery reason
     for_user_id: int  # The user this song was picked for
     duration_seconds: int | None = None
@@ -77,7 +77,7 @@ class TurnTracker:
 class DiscoveryEngine:
     """Intelligent song discovery engine."""
     
-    DEFAULT_WEIGHTS = {"similar": 60, "artist": 10, "wildcard": 30}
+    DEFAULT_WEIGHTS = {"similar": 25, "artist": 25, "wildcard": 25, "library": 25}
     
     def __init__(
         self,
@@ -121,6 +121,10 @@ class DiscoveryEngine:
         
         # Get weights (from settings or defaults)
         weights = weights or self.DEFAULT_WEIGHTS
+        
+        # Migration: If old 3-strategy weights are found, reset to new 4-strategy default
+        if weights and "library" not in weights:
+            weights = self.DEFAULT_WEIGHTS
         
         # Get recent history (Cooldown check)
         # Using cooldown_seconds parameter (defaults to 2 hours)
@@ -173,7 +177,31 @@ class DiscoveryEngine:
             return await self._strategy_artist(user_id, recent_yt_ids)
         elif strategy == "wildcard":
             return await self._strategy_wildcard(recent_yt_ids)
+        elif strategy == "library":
+            return await self._strategy_library(user_id, recent_yt_ids)
         return None
+    
+    async def _strategy_library(self, user_id: int, recent_yt_ids: set[str]) -> YTTrack | None:
+        """Fetch a random song from user's liked library."""
+        # Get user's liked songs
+        liked = await self.reactions.get_liked_songs(user_id, limit=100)
+        
+        # Filter out recent songs
+        candidates = [t for t in liked if t.get("canonical_yt_id") not in recent_yt_ids]
+        
+        if candidates:
+            # Pick a random liked song
+            song = random.choice(candidates)
+            return YTTrack(
+                video_id=song["canonical_yt_id"],
+                title=song["title"],
+                artist=song["artist_name"],
+                duration_seconds=song.get("duration_seconds"),
+                year=song.get("release_year")
+            )
+        
+        # Fallback to wildcard if library is empty or all songs recently played
+        return await self._strategy_wildcard(recent_yt_ids)
     
     async def _strategy_similar(self, user_id: int, recent_yt_ids: set[str]) -> YTTrack | None:
         """Find a similar song based on user's liked songs."""
@@ -268,4 +296,6 @@ class DiscoveryEngine:
             return f"🎤 From artist you enjoy: {song.artist}"
         elif strategy == "wildcard":
             return "🎲 Popular track you might like"
+        elif strategy == "library":
+            return "📚 From your saved library"
         return "Discovered for you"

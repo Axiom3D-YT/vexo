@@ -367,6 +367,37 @@
                                 </div>
                             </div>
 
+                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">🎲 Discovery Strategies (Total: <span
+                                    id="weights-total">100</span>%)</h3>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Similar Songs</label>
+                                    <input type="number" id="weight-similar" class="form-input" value="25" min="0"
+                                        max="100" oninput="validateWeights()">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Same Artist</label>
+                                    <input type="number" id="weight-artist" class="form-input" value="25" min="0"
+                                        max="100" oninput="validateWeights()">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Wildcard (Charts)</label>
+                                    <input type="number" id="weight-wildcard" class="form-input" value="25" min="0"
+                                        max="100" oninput="validateWeights()">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">My Library</label>
+                                    <input type="number" id="weight-library" class="form-input" value="25" min="0"
+                                        max="100" oninput="validateWeights()">
+                                </div>
+                            </div>
+                            <div id="weight-error"
+                                style="color: var(--warning); font-size: 0.8rem; margin-top: 0.5rem; display: none;">
+                                ⚠️ Weights should total 100%. They will be auto-normalized if not.
+                            </div>
+
                             <div style="margin-top: 2rem;">
                                 <button class="btn btn-primary" onclick="saveServerSettings()">Save Server
                                     Settings</button>

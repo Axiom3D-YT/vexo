@@ -616,42 +616,17 @@ class MusicCog(commands.Cog):
         try:
             while player.voice_client and player.voice_client.is_connected():
                 player.skip_votes.clear()
-                
-                # Get next item from queue or discovery
+                # 1. Get next item from queue
                 try:
-                    if player.queue.empty():
-                        if player.autoplay:
-                            # Check max duration setting
-                            from src.database.crud import GuildCRUD
-                            guild_crud = GuildCRUD(self.bot.db) if hasattr(self.bot, "db") else None
-                            max_seconds = 0
-                            if guild_crud:
-                                try:
-                                    max_dur = await guild_crud.get_setting(player.guild_id, "max_song_duration")
-                                    if max_dur:
-                                        max_seconds = int(max_dur) * 60
-                                except: pass
-                            
-                            # Try up to 3 times to find a song within duration limit
-                            for _ in range(3):
-                                item = await self._get_discovery_song(player)
-                                if not item:
-                                    break
-                                
-                                if max_seconds > 0 and item.duration_seconds and item.duration_seconds > max_seconds:
-                                    logger.info(f"Skipping discovered song {item.title} (duration {item.duration_seconds}s > {max_seconds}s)")
-                                    continue
-                                break
-                            
-                            if not item:
-                                logger.info(f"No discovery songs available for guild {player.guild_id}")
-                                break
-                        else:
-                            break
-                    else:
-                        item = player.queue.get_nowait()
+                    item = player.queue.get_nowait()
                 except asyncio.QueueEmpty:
-                    break
+                    # If queue is empty, trigger emergency sequential discovery
+                    # (This handles the very first play or if prep failed)
+                    await self._prepare_next_song(player)
+                    try:
+                        item = player.queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break # Truly nothing available
                 
                 player.current = item
                 player.last_activity = datetime.now(UTC)
@@ -775,17 +750,19 @@ class MusicCog(commands.Cog):
                     except Exception as e:
                         logger.error(f"Failed to log playback start: {e}")
                 
-                # Get stream URL
-                url = await self.youtube.get_stream_url(item.video_id)
+                # 2. Get stream URL (Use pre-fetched if available)
+                url = item.url
+                if not url:
+                    url = await self.youtube.get_stream_url(item.video_id)
+                
                 if not url:
                     logger.error(f"Failed to get stream URL for {item.video_id}")
                     continue
                 
                 item.url = url
                 
-                # Pre-buffer next URL if enabled
-                if player.pre_buffer and not player.queue.empty():
-                    asyncio.create_task(self._pre_buffer_next(player))
+                # Prepare next song immediately (Gate for gapless)
+                asyncio.create_task(self._prepare_next_song(player))
                 
                 # Play the audio
                 try:
@@ -885,21 +862,30 @@ class MusicCog(commands.Cog):
         # Try discovery engine first
         if hasattr(self.bot, "discovery") and self.bot.discovery:
             try:
-                # Get Cooldown Setting
+                # Get Cooldown and Weights Setting
                 cooldown = 7200 # Default 2 hours
+                weights = None
                 if hasattr(self.bot, "db"):
                     from src.database.crud import GuildCRUD
                     guild_crud = GuildCRUD(self.bot.db)
-                    setting = await guild_crud.get_setting(player.guild_id, "replay_cooldown")
-                    if setting:
+                    
+                    # Fetch cooldown
+                    setting_cooldown = await guild_crud.get_setting(player.guild_id, "replay_cooldown")
+                    if setting_cooldown:
                         try:
-                            cooldown = int(setting)
+                            cooldown = int(setting_cooldown)
                         except ValueError:
                             pass
+                    
+                    # Fetch discovery weights
+                    setting_weights = await guild_crud.get_setting(player.guild_id, "discovery_weights")
+                    if setting_weights:
+                        weights = setting_weights
 
                 discovered = await self.bot.discovery.get_next_song(
                     player.guild_id,
                     voice_members,
+                    weights=weights,
                     cooldown_seconds=cooldown
                 )
                 if discovered:
@@ -1033,22 +1019,58 @@ class MusicCog(commands.Cog):
         except Exception as e:
             logger.debug(f"Failed to send Now Playing embed: {e}")
     
-    async def _pre_buffer_next(self, player: GuildPlayer):
-        """Pre-buffer the next song's URL."""
+    async def _prepare_next_song(self, player: GuildPlayer):
+        """
+        Ensures the next song is ready for playback.
+        Triggers discovery if queue is empty and extracts URLs in advance.
+        """
         try:
-            # Peek at next item without removing
+            # 1. If queue is empty, trigger discovery immediately
             if player.queue.empty():
-                return
-            
-            next_item = list(player.queue._queue)[0]
-            if not next_item.url:
-                url = await self.youtube.get_stream_url(next_item.video_id)
-                if url:
-                    next_item.url = url
-                    player._next_url = url
-                    logger.debug(f"Pre-buffered URL for: {next_item.title}")
+                if not player.autoplay:
+                    return
+                # We need to find a song within duration limit
+                max_seconds = 0
+                if hasattr(self.bot, "db"):
+                    try:
+                        from src.database.crud import GuildCRUD
+                        guild_crud = GuildCRUD(self.bot.db)
+                        max_dur = await guild_crud.get_setting(player.guild_id, "max_song_duration")
+                        if max_dur:
+                            max_seconds = int(max_dur) * 60
+                    except: pass
+                
+                logger.info(f"Proactive discovery triggered for guild {player.guild_id}")
+                for _ in range(3):
+                    item = await self._get_discovery_song(player)
+                    if not item:
+                        break
+                    
+                    if max_seconds > 0 and item.duration_seconds and item.duration_seconds > max_seconds:
+                        logger.info(f"Skipping proactive discovery song {item.title} (duration {item.duration_seconds}s > {max_seconds}s)")
+                        continue
+                    
+                    # Add to queue
+                    player.queue.put_nowait(item)
+                    break
+
+            # 2. Extract stream URL for the first item in queue if missing
+            # Only do this if pre_buffer setting is on, OR if we just added it to an empty queue as discovery
+            if not player.queue.empty():
+                # Peek at next item without removing
+                next_item = list(player.queue._queue)[0]
+                
+                if not next_item.url:
+                    # We always extract for the direct next song if it was a discovery item
+                    # to ensure gapless, even if pre-buffering is 'off' for resource reasons
+                    # because the user explicitly asked for 'lowest gap'
+                    url = await self.youtube.get_stream_url(next_item.video_id)
+                    if url:
+                        next_item.url = url
+                        logger.debug(f"Gapless Pre-fetch: Prepared URL for: {next_item.title}")
+                    
         except Exception as e:
-            logger.debug(f"Pre-buffer failed: {e}")
+            logger.debug(f"Song preparation failed: {e}")
     
     async def _idle_check_loop(self):
         """Check for idle players and disconnect."""
