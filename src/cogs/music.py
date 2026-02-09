@@ -549,53 +549,6 @@ class MusicCog(commands.Cog):
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
 
-class SessionEndedView(discord.ui.View):
-    """View shown when a playback session has ended."""
-    def __init__(self, cog, guild_id: int):
-        super().__init__(timeout=None)
-        self.cog = cog
-        self.guild_id = guild_id
-
-    @discord.ui.button(label="Start New Session", emoji="🎲", style=discord.ButtonStyle.success)
-    async def relaunch(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Relaunch discovery session."""
-        player = self.cog.get_player(self.guild_id)
-        
-        # 1. Update the current message to remove buttons (make it static)
-        try:
-            # Create a static version of the embed
-            embed = interaction.message.embeds[0]
-            embed.title = "🏁 Playback Finished (Archived)"
-            embed.color = discord.Color.default()
-            await interaction.message.edit(embed=embed, view=None)
-        except Exception as e:
-            logger.debug(f"Failed to archieve session end message: {e}")
-
-        # 2. Trigger /play any logic
-        # This is similar to the code in play_any command
-        if not interaction.user.voice:
-            await interaction.response.send_message("❌ You must be in a voice channel to start a session!", ephemeral=True)
-            return
-
-        # Defer to allow discovery to work
-        await interaction.response.defer()
-        
-        # Connect to voice if not connected
-        if not player.voice_client:
-            player.voice_client = await interaction.user.voice.channel.connect()
-        
-        player.autoplay = True
-        player.text_channel_id = interaction.channel_id
-        
-        if not player.is_playing:
-            player.is_playing = True
-            asyncio.create_task(self.cog._play_loop(player))
-            
-            # Followup to confirm start
-            await interaction.followup.send("🚀 Starting new discovery session!", ephemeral=True)
-        else:
-            await interaction.followup.send("ℹ️ A session is already active!", ephemeral=True)
-    
     @app_commands.command(name="resume", description="Resume the paused song")
     async def resume(self, interaction: discord.Interaction):
         """Resume playback."""
@@ -1297,6 +1250,55 @@ class SessionEndedView(discord.ui.View):
                 await player.voice_client.disconnect()
                 player.voice_client = None
                 logger.info(f"Disconnected from {member.guild.name} - everyone left")
+
+
+
+class SessionEndedView(discord.ui.View):
+    """View shown when a playback session has ended."""
+    def __init__(self, cog, guild_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="Start New Session", emoji="🎲", style=discord.ButtonStyle.success)
+    async def relaunch(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Relaunch discovery session."""
+        player = self.cog.get_player(self.guild_id)
+        
+        # 1. Update the current message to remove buttons (make it static)
+        try:
+            # Create a static version of the embed
+            embed = interaction.message.embeds[0]
+            embed.title = "🏁 Playback Finished (Archived)"
+            embed.color = discord.Color.default()
+            await interaction.message.edit(embed=embed, view=None)
+        except Exception as e:
+            logger.debug(f"Failed to archieve session end message: {e}")
+
+        # 2. Trigger /play any logic
+        # This is similar to the code in play_any command
+        if not interaction.user.voice:
+            await interaction.response.send_message("❌ You must be in a voice channel to start a session!", ephemeral=True)
+            return
+
+        # Defer to allow discovery to work
+        await interaction.response.defer()
+        
+        # Connect to voice if not connected
+        if not player.voice_client:
+            player.voice_client = await interaction.user.voice.channel.connect()
+        
+        player.autoplay = True
+        player.text_channel_id = interaction.channel_id
+        
+        if not player.is_playing:
+            player.is_playing = True
+            asyncio.create_task(self.cog._play_loop(player))
+            
+            # Followup to confirm start
+            await interaction.followup.send("🚀 Starting new discovery session!", ephemeral=True)
+        else:
+            await interaction.followup.send("ℹ️ A session is already active!", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
