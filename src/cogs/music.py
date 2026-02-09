@@ -1319,19 +1319,27 @@ class MusicCog(commands.Cog):
             if not guild:
                 return
 
-            # Try to find a suitable text channel
-            channel = guild.system_channel
-            # Need both send_messages AND embed_links
-            if not channel or not (channel.permissions_for(guild.me).send_messages and channel.permissions_for(guild.me).embed_links):
-                # Find first channel we can send to with embeds
-                channels = [
-                    c for c in guild.text_channels 
-                    if c.permissions_for(guild.me).send_messages and c.permissions_for(guild.me).embed_links
-                ]
-                if not channels:
-                    logger.warning(f"Could not find a suitable text channel to send recap in guild {guild.name}")
-                    return
-                channel = channels[0]
+            # Try to find the original text channel
+            channel = None
+            if stats.get("channel_id"):
+                 try:
+                     channel = guild.get_channel(int(stats["channel_id"]))
+                 except: pass
+
+            if not channel:
+                # Fallback: Find system channel or first available
+                channel = guild.system_channel
+                # Need both send_messages AND embed_links
+                if not channel or not (channel.permissions_for(guild.me).send_messages and channel.permissions_for(guild.me).embed_links):
+                    # Find first channel we can send to with embeds
+                    channels = [
+                        c for c in guild.text_channels 
+                        if c.permissions_for(guild.me).send_messages and c.permissions_for(guild.me).embed_links
+                    ]
+                    if not channels:
+                        logger.warning(f"Could not find a suitable text channel to send recap in guild {guild.name}")
+                        return
+                    channel = channels[0]
 
             embed = discord.Embed(
                 title="🏁 Interrupted Session Recap",

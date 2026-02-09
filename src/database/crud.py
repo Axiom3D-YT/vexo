@@ -760,6 +760,7 @@ class AnalyticsCRUD:
                 started_at, 
                 ended_at,
                 last_message_id,
+                channel_id,
                 (SELECT COUNT(DISTINCT user_id) FROM session_listeners WHERE session_id = ?) as unique_listeners
             FROM playback_sessions 
             WHERE id = ?
@@ -806,6 +807,7 @@ class AnalyticsCRUD:
         stats["total_seconds"] = real_duration
         stats["unique_listeners"] = session_info["unique_listeners"] if session_info else 0
         stats["last_message_id"] = session_info["last_message_id"] if session_info else None
+        stats["channel_id"] = session_info["channel_id"] if session_info else None
         
         # 2. Top Artist
         query_artist = """
