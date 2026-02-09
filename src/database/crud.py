@@ -746,18 +746,45 @@ class AnalyticsCRUD:
         """Get summary statistics for a specific playback session."""
         stats = {}
         
-        # 1. Basic counts
-        query_basic = """
+        # 0. Session Timing (Real Time)
+        query_time = """
             SELECT 
-                COUNT(*) as total_tracks,
-                SUM(s.duration_seconds) as total_seconds,
+                started_at, 
+                ended_at,
                 (SELECT COUNT(DISTINCT user_id) FROM session_listeners WHERE session_id = ?) as unique_listeners
+            FROM playback_sessions 
+            WHERE id = ?
+        """
+        session_info = await self.db.fetch_one(query_time, (session_id, session_id))
+        
+        real_duration = 0
+        if session_info and session_info["started_at"] and session_info["ended_at"]:
+            try:
+                # Handle both string (SQLite) and datetime objects
+                s_at = session_info["started_at"]
+                e_at = session_info["ended_at"]
+                
+                if isinstance(s_at, str):
+                    s_at = datetime.fromisoformat(s_at.replace('Z', '+00:00'))
+                if isinstance(e_at, str):
+                    e_at = datetime.fromisoformat(e_at.replace('Z', '+00:00'))
+                
+                real_duration = int((e_at - s_at).total_seconds())
+            except Exception:
+                pass
+        
+        # 1. Track stats
+        query_tracks = """
+            SELECT 
+                COUNT(*) as total_tracks
             FROM playback_history ph
-            JOIN songs s ON ph.song_id = s.id
             WHERE ph.session_id = ?
         """
-        basic = await self.db.fetch_one(query_basic, (session_id, session_id))
-        stats.update(dict(basic) if basic else {"total_tracks": 0, "total_seconds": 0, "unique_listeners": 0})
+        tracks_info = await self.db.fetch_one(query_tracks, (session_id,))
+        
+        stats["total_tracks"] = tracks_info["total_tracks"] if tracks_info else 0
+        stats["total_seconds"] = real_duration
+        stats["unique_listeners"] = session_info["unique_listeners"] if session_info else 0
         
         # 2. Top Artist
         query_artist = """
