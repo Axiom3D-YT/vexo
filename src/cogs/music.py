@@ -113,7 +113,7 @@ class NowPlayingView(discord.ui.View):
                 description="This music session has ended.\n*Session summary and stats will appear here in the future.*",
                 color=discord.Color.dark_grey()
             )
-            session_embed.set_timestamp(datetime.now(UTC))
+            session_embed.timestamp = datetime.now(UTC)
             
             # Edit the last Now Playing message if it exists
             if player.last_np_msg:
