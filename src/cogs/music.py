@@ -40,7 +40,7 @@ class GuildPlayer:
     """Per-guild music player state."""
     guild_id: int
     voice_client: discord.VoiceClient | None = None
-    queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    queue: asyncio.PriorityQueue = field(default_factory=asyncio.PriorityQueue)
     current: QueueItem | None = None
     session_id: str | None = None
     is_playing: bool = False
@@ -51,6 +51,7 @@ class GuildPlayer:
     _next_url: str | None = None  # Pre-buffered URL
     text_channel_id: int | None = None  # For Now Playing messages
     last_np_msg: discord.Message | None = None
+    _queue_counter: int = 0  # To maintain FIFO in PriorityQueue
 
 
 class NowPlayingView(discord.ui.View):
@@ -74,12 +75,14 @@ class NowPlayingView(discord.ui.View):
                 button.emoji = "⏸️"
                 await interaction.response.edit_message(view=self)
             else:
-                await interaction.response.defer()
+                if not interaction.response.is_done():
+                    await interaction.response.defer()
         else:
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
     
     @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
-    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = self.cog.get_player(self.guild_id)
         if player.voice_client:
             # Ensure process is stopped properly
@@ -105,9 +108,10 @@ class NowPlayingView(discord.ui.View):
             player.voice_client = None
             
             await interaction.response.send_message("⏹️ Stopped and cleared queue!", ephemeral=True)
-            self.stop()  # Stop listening for interactions
+            self.stop()  # Stop the view from listening for more interactions
         else:
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
     
     @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary)
     async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -116,7 +120,8 @@ class NowPlayingView(discord.ui.View):
             player.voice_client.stop()
             await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
         else:
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
     
     @discord.ui.button(emoji="❤️", style=discord.ButtonStyle.secondary)
     async def like(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -219,7 +224,8 @@ class MusicCog(commands.Cog):
     @app_commands.describe(query="Song name or search query")
     async def play_song(self, interaction: discord.Interaction, query: str):
         """Search for a song and add it to the queue."""
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         # Check if user is in a voice channel
         if not interaction.user.voice:
@@ -312,7 +318,10 @@ class MusicCog(commands.Cog):
             duration_seconds=track.duration_seconds,
             year=track.year
         )
-        await player.queue.put(item)
+        # Add to priority queue
+        # Priority 0: User Request
+        player._queue_counter += 1
+        player.queue.put_nowait((0, player._queue_counter, item))
         player.last_activity = datetime.now(UTC)
         player.text_channel_id = interaction.channel_id  # Store for Now Playing
         
@@ -334,7 +343,8 @@ class MusicCog(commands.Cog):
     @app_commands.describe(artist_name="Artist name")
     async def play_artist(self, interaction: discord.Interaction, artist_name: str):
         """Search for an artist, boost preference, and queue top 5 songs."""
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         # Check if user is in a voice channel
         if not interaction.user.voice:
@@ -429,7 +439,9 @@ class MusicCog(commands.Cog):
                 duration_seconds=yt_track.duration_seconds,
                 year=yt_track.year
             )
-            await player.queue.put(item)
+            # Add to priority queue (Priority 0: User Request)
+            player._queue_counter += 1
+            player.queue.put_nowait((0, player._queue_counter, item))
             queued_count += 1
 
         if queued_count == 0:
@@ -457,7 +469,8 @@ class MusicCog(commands.Cog):
     async def play_any(self, interaction: discord.Interaction):
         """Start discovery playback without a specific song."""
         try:
-            await interaction.response.defer(ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
         except discord.NotFound:
             # Interaction might have expired or been acknowledged already, just log and continue if possible or return
             logger.warning("Interaction expired (404) in play_any")
@@ -498,9 +511,11 @@ class MusicCog(commands.Cog):
         
         if player.voice_client and player.voice_client.is_playing():
             player.voice_client.pause()
-            await interaction.response.send_message("⏸️ Paused", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⏸️ Paused", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
     
     @app_commands.command(name="resume", description="Resume the paused song")
     async def resume(self, interaction: discord.Interaction):
@@ -509,9 +524,11 @@ class MusicCog(commands.Cog):
         
         if player.voice_client and player.voice_client.is_paused():
             player.voice_client.resume()
-            await interaction.response.send_message("▶️ Resumed", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("▶️ Resumed", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ Nothing is paused", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Nothing is paused", ephemeral=True)
     
     @app_commands.command(name="skip", description="Skip the current song")
     async def skip(self, interaction: discord.Interaction):
@@ -519,11 +536,13 @@ class MusicCog(commands.Cog):
         player = self.get_player(interaction.guild_id)
         
         if not player.voice_client or not player.is_playing:
-            await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
             return
         
         player.voice_client.stop()
-        await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
     
     @app_commands.command(name="forceskip", description="Force skip (DJ only)")
     @app_commands.default_permissions(manage_channels=True)
@@ -533,9 +552,11 @@ class MusicCog(commands.Cog):
         
         if player.voice_client and player.is_playing:
             player.voice_client.stop()
-            await interaction.response.send_message("⏭️ Force skipped!", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⏭️ Force skipped!", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
     
     @app_commands.command(name="queue", description="Show the current queue")
     async def queue(self, interaction: discord.Interaction):
@@ -557,7 +578,8 @@ class MusicCog(commands.Cog):
             embed.add_field(name="Up Next", value="Queue is empty", inline=False)
         else:
             # Convert queue to list for display (peek without removing)
-            items = list(player.queue._queue)[:10]
+            # PriorityQueue stores (priority, counter, item)
+            items = [item for _, _, item in list(player.queue._queue)[:10]]
             upcoming = []
             for i, item in enumerate(items, 1):
                 upcoming.append(f"{i}. **{item.title}** - {item.artist}")
@@ -628,15 +650,18 @@ class MusicCog(commands.Cog):
         try:
             while player.voice_client and player.voice_client.is_connected():
                 player.skip_votes.clear()
-                # 1. Get next item from queue
+                # Get next from priority queue
                 try:
-                    item = player.queue.get_nowait()
+                    # priority, counter, item = await player.queue.get()
+                    _, _, item = await player.queue.get()
+                    player.current = item
                 except asyncio.QueueEmpty:
                     # If queue is empty, trigger emergency sequential discovery
                     # (This handles the very first play or if prep failed)
                     await self._prepare_next_song(player)
                     try:
-                        item = player.queue.get_nowait()
+                        _, _, item = player.queue.get_nowait()
+                        player.current = item
                     except asyncio.QueueEmpty:
                         break # Truly nothing available
                 
@@ -1100,8 +1125,9 @@ class MusicCog(commands.Cog):
                         logger.info(f"Skipping proactive discovery song {item.title} (duration {item.duration_seconds}s > {max_seconds}s)")
                         continue
                     
-                    # Add to queue
-                    player.queue.put_nowait(item)
+                    # Add to queue (Priority 1: Autoplay)
+                    player._queue_counter += 1
+                    player.queue.put_nowait((1, player._queue_counter, item))
                     
                     # USER REQUEST: Log confirmed proactive discovery item
                     logger.info(f"⏭️ Next song confirmed for guild {player.guild_id}: {item.title} by {item.artist} | Strategy: {item.discovery_source} ({item.discovery_reason})")

@@ -31,7 +31,8 @@ class PreferencesCog(commands.Cog):
     @app_commands.command(name="preferences", description="Show your music preferences")
     async def show_preferences(self, interaction: discord.Interaction):
         """Show user's learned preferences."""
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         if not self.preferences:
             await interaction.followup.send("❌ Preference system not initialized", ephemeral=True)

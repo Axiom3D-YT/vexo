@@ -25,7 +25,8 @@ class ImportCog(commands.Cog):
     @app_commands.describe(url="Spotify or YouTube playlist URL")
     async def import_playlist(self, interaction: discord.Interaction, url: str):
         """Import a playlist and learn preferences from it."""
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         # Detect platform
         if "spotify.com" in url:

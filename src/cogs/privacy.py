@@ -24,7 +24,8 @@ class PrivacyCog(commands.Cog):
     @privacy_group.command(name="export", description="Export all your data")
     async def export_data(self, interaction: discord.Interaction):
         """Export all user data as JSON."""
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         
         if not hasattr(self.bot, "db") or not self.bot.db:
             await interaction.followup.send("❌ Database not available", ephemeral=True)
