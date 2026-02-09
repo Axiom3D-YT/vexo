@@ -538,6 +538,9 @@ async function loadSettingsTab() {
             const md = document.getElementById('setting-max-duration');
             if (md) md.value = data.max_song_duration || 6;
 
+            const ed = document.getElementById('setting-ephemeral-duration');
+            if (ed) ed.value = data.ephemeral_duration || 10;
+
             // Discovery weights
             const weights = data.discovery_weights || { similar: 25, artist: 25, wildcard: 25, library: 25 };
             const wSimilar = document.getElementById('weight-similar');
@@ -593,6 +596,7 @@ async function saveServerSettings() {
     const preBuffer = document.getElementById('setting-pre-buffer').checked;
     const bufferAmount = document.getElementById('setting-buffer-amount').value;
     const maxDuration = document.getElementById('setting-max-duration').value;
+    const ephemeralDuration = document.getElementById('setting-ephemeral-duration').value;
 
     const weights = {
         similar: parseInt(document.getElementById('weight-similar').value) || 0,
@@ -609,6 +613,7 @@ async function saveServerSettings() {
                 pre_buffer: preBuffer,
                 buffer_amount: parseInt(bufferAmount),
                 max_song_duration: parseInt(maxDuration),
+                ephemeral_duration: parseInt(ephemeralDuration),
                 discovery_weights: weights
             })
         });

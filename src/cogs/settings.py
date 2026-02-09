@@ -142,10 +142,37 @@ class SettingsCog(commands.Cog):
                 value="Enabled" if autoplay else "Disabled",
                 inline=True
             )
+            
+            # Ephemeral Duration
+            ephemeral_dur = all_settings.get("ephemeral_duration", 10)
+            embed.add_field(
+                name="⏳ Auto-Delete Duration",
+                value=f"{ephemeral_dur}s",
+                inline=True
+            )
         else:
             embed.description = "Settings stored in memory only (database not available)"
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @settings_group.command(name="ephemeral_duration", description="Set auto-delete duration for confirmation messages")
+    @app_commands.describe(seconds="Duration in seconds (5-60)")
+    async def ephemeral_duration(self, interaction: discord.Interaction, seconds: int):
+        """Set how long confirmation messages stay before being deleted."""
+        if not 5 <= seconds <= 60:
+            await interaction.response.send_message("❌ Duration must be between 5 and 60 seconds", ephemeral=True)
+            return
+            
+        # Save to database
+        if hasattr(self.bot, "db") and self.bot.db:
+            from src.database.crud import GuildCRUD
+            guild_crud = GuildCRUD(self.bot.db)
+            await guild_crud.set_setting(interaction.guild_id, "ephemeral_duration", seconds)
+        
+        await interaction.response.send_message(
+            f"⏳ Confirmation messages will now auto-delete after {seconds} seconds.",
+            ephemeral=True
+        )
     
     @app_commands.command(name="dj", description="Set the DJ role")
     @app_commands.describe(role="The role that can use DJ commands")

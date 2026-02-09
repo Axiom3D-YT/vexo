@@ -107,7 +107,24 @@ class NowPlayingView(discord.ui.View):
             await player.voice_client.disconnect()
             player.voice_client = None
             
-            await interaction.response.send_message("⏹️ Stopped and cleared queue!", ephemeral=True)
+            # Session Ended Embed
+            session_embed = discord.Embed(
+                title="🏁 Playback Finished",
+                description="This music session has ended.\n*Session summary and stats will appear here in the future.*",
+                color=discord.Color.dark_grey()
+            )
+            session_embed.set_timestamp(datetime.now(UTC))
+            
+            # Edit the last Now Playing message if it exists
+            if player.last_np_msg:
+                try:
+                    await player.last_np_msg.edit(embed=session_embed, view=SessionEndedView(self.cog, self.guild_id))
+                except Exception as e:
+                    logger.debug(f"Failed to edit session end embed: {e}")
+                player.last_np_msg = None
+
+            duration = await self.cog._get_ephemeral_duration(self.guild_id)
+            await interaction.response.send_message("⏹️ Stopped and cleared queue!", delete_after=duration)
             self.stop()  # Stop the view from listening for more interactions
         else:
             if not interaction.response.is_done():
@@ -118,7 +135,8 @@ class NowPlayingView(discord.ui.View):
         player = self.cog.get_player(self.guild_id)
         if player.voice_client and player.is_playing:
             player.voice_client.stop()
-            await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
+            duration = await self.cog._get_ephemeral_duration(self.guild_id)
+            await interaction.response.send_message("⏭️ Skipped!", delete_after=duration)
         else:
             if not interaction.response.is_done():
                 await interaction.response.defer()
@@ -210,6 +228,19 @@ class MusicCog(commands.Cog):
         
         logger.info("Music cog unloaded")
     
+    async def _get_ephemeral_duration(self, guild_id: int) -> int:
+        """Get the auto-delete duration for ephemeral/confirmation messages."""
+        if hasattr(self.bot, "db") and self.bot.db:
+            try:
+                from src.database.crud import GuildCRUD
+                guild_crud = GuildCRUD(self.bot.db)
+                duration = await guild_crud.get_setting(guild_id, "ephemeral_duration")
+                if duration:
+                    return int(duration)
+            except:
+                pass
+        return 10  # Default 10 seconds
+
     def get_player(self, guild_id: int) -> GuildPlayer:
         """Get or create a player for a guild."""
         if guild_id not in self.players:
@@ -511,11 +542,59 @@ class MusicCog(commands.Cog):
         
         if player.voice_client and player.voice_client.is_playing():
             player.voice_client.pause()
+            duration = await self._get_ephemeral_duration(interaction.guild_id)
             if not interaction.response.is_done():
-                await interaction.response.send_message("⏸️ Paused", ephemeral=True)
+                await interaction.response.send_message("⏸️ Paused", delete_after=duration)
         else:
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
+
+class SessionEndedView(discord.ui.View):
+    """View shown when a playback session has ended."""
+    def __init__(self, cog, guild_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="Start New Session", emoji="🎲", style=discord.ButtonStyle.success)
+    async def relaunch(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Relaunch discovery session."""
+        player = self.cog.get_player(self.guild_id)
+        
+        # 1. Update the current message to remove buttons (make it static)
+        try:
+            # Create a static version of the embed
+            embed = interaction.message.embeds[0]
+            embed.title = "🏁 Playback Finished (Archived)"
+            embed.color = discord.Color.default()
+            await interaction.message.edit(embed=embed, view=None)
+        except Exception as e:
+            logger.debug(f"Failed to archieve session end message: {e}")
+
+        # 2. Trigger /play any logic
+        # This is similar to the code in play_any command
+        if not interaction.user.voice:
+            await interaction.response.send_message("❌ You must be in a voice channel to start a session!", ephemeral=True)
+            return
+
+        # Defer to allow discovery to work
+        await interaction.response.defer()
+        
+        # Connect to voice if not connected
+        if not player.voice_client:
+            player.voice_client = await interaction.user.voice.channel.connect()
+        
+        player.autoplay = True
+        player.text_channel_id = interaction.channel_id
+        
+        if not player.is_playing:
+            player.is_playing = True
+            asyncio.create_task(self.cog._play_loop(player))
+            
+            # Followup to confirm start
+            await interaction.followup.send("🚀 Starting new discovery session!", ephemeral=True)
+        else:
+            await interaction.followup.send("ℹ️ A session is already active!", ephemeral=True)
     
     @app_commands.command(name="resume", description="Resume the paused song")
     async def resume(self, interaction: discord.Interaction):
@@ -524,8 +603,9 @@ class MusicCog(commands.Cog):
         
         if player.voice_client and player.voice_client.is_paused():
             player.voice_client.resume()
+            duration = await self._get_ephemeral_duration(interaction.guild_id)
             if not interaction.response.is_done():
-                await interaction.response.send_message("▶️ Resumed", ephemeral=True)
+                await interaction.response.send_message("▶️ Resumed", delete_after=duration)
         else:
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ Nothing is paused", ephemeral=True)
@@ -540,9 +620,10 @@ class MusicCog(commands.Cog):
                 await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
             return
         
+        duration = await self._get_ephemeral_duration(interaction.guild_id)
         player.voice_client.stop()
         if not interaction.response.is_done():
-            await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
+            await interaction.response.send_message("⏭️ Skipped!", delete_after=duration)
     
     @app_commands.command(name="forceskip", description="Force skip (DJ only)")
     @app_commands.default_permissions(manage_channels=True)
@@ -552,8 +633,9 @@ class MusicCog(commands.Cog):
         
         if player.voice_client and player.is_playing:
             player.voice_client.stop()
+            duration = await self._get_ephemeral_duration(interaction.guild_id)
             if not interaction.response.is_done():
-                await interaction.response.send_message("⏭️ Force skipped!", ephemeral=True)
+                await interaction.response.send_message("⏭️ Force skipped!", delete_after=duration)
         else:
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
