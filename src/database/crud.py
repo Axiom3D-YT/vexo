@@ -282,6 +282,14 @@ class PlaybackCRUD:
             (datetime.now(UTC), session_id)
         )
 
+    async def update_session_message(self, session_id: str, message_id: int | None) -> None:
+        """Update the last message ID for a session."""
+        msg_id_str = str(message_id) if message_id else None
+        await self.db.execute(
+            "UPDATE playback_sessions SET last_message_id = ? WHERE id = ?",
+            (msg_id_str, session_id)
+        )
+
     async def get_stale_sessions(self) -> list[dict]:
         """Get sessions that haven't been ended."""
         return await self.db.fetch_all(
@@ -751,6 +759,7 @@ class AnalyticsCRUD:
             SELECT 
                 started_at, 
                 ended_at,
+                last_message_id,
                 (SELECT COUNT(DISTINCT user_id) FROM session_listeners WHERE session_id = ?) as unique_listeners
             FROM playback_sessions 
             WHERE id = ?

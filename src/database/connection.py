@@ -99,6 +99,17 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"Migration for playback_history failed: {e}")
                 await db.rollback()
+
+            # 3. Add last_message_id to playback_sessions if missing
+            try:
+                await db.execute("SELECT last_message_id FROM playback_sessions LIMIT 1")
+            except Exception:
+                logger.info("Migrating: Adding last_message_id column to playback_sessions table")
+                try:
+                    await db.execute("ALTER TABLE playback_sessions ADD COLUMN last_message_id TEXT")
+                    await db.commit()
+                except Exception as e:
+                    logger.error(f"Migration for playback_sessions failed: {e}")
     
     @asynccontextmanager
     async def connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:

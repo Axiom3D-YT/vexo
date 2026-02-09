@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS playback_sessions (
     id TEXT PRIMARY KEY,
     guild_id INTEGER REFERENCES guilds(id),
     channel_id INTEGER,
+    last_message_id TEXT,
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMP
 );

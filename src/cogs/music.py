@@ -1144,6 +1144,15 @@ class MusicCog(commands.Cog):
                     player.last_np_msg = await channel.send(embed=embed, view=view)
             else:
                 player.last_np_msg = await channel.send(embed=embed, view=view)
+            
+            # Save the message ID to the database session
+            if player.session_id and player.last_np_msg:
+                try:
+                    from src.database.crud import PlaybackCRUD
+                    playback_crud = PlaybackCRUD(self.bot.db)
+                    await playback_crud.update_session_message(player.session_id, player.last_np_msg.id)
+                except Exception as e:
+                    logger.debug(f"Failed to record NP message ID in DB: {e}")
         except Exception as e:
             logger.debug(f"Failed to send Now Playing embed: {e}")
     
@@ -1362,7 +1371,20 @@ class MusicCog(commands.Cog):
             embed.set_footer(text="Vexo Music • Quality Audio Discovery")
             embed.timestamp = datetime.now(UTC)
 
-            await channel.send(embed=embed, view=SessionEndedView(self, guild_id))
+            # Try to edit the old Now Playing message if we have its ID
+            msg_sent = False
+            last_msg_id = stats.get("last_message_id")
+            if last_msg_id:
+                try:
+                    old_msg = await channel.fetch_message(int(last_msg_id))
+                    if old_msg:
+                        await old_msg.edit(embed=embed, view=SessionEndedView(self, guild_id))
+                        msg_sent = True
+                except Exception:
+                    pass
+
+            if not msg_sent:
+                await channel.send(embed=embed, view=SessionEndedView(self, guild_id))
 
         except Exception as e:
             logger.error(f"Failed to send stale session recap: {e}")
