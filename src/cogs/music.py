@@ -12,7 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from src.services.youtube import YouTubeService, YTTrack
-from src.database.crud import SongCRUD, UserCRUD, PlaybackCRUD, ReactionCRUD, GuildCRUD
+from src.database.crud import SongCRUD, UserCRUD, PlaybackCRUD, ReactionCRUD, GuildCRUD, AnalyticsCRUD
 
 logger = logging.getLogger(__name__)
 
@@ -103,25 +103,12 @@ class NowPlayingView(discord.ui.View):
             if player.is_playing or player.voice_client.is_playing():
                 player.voice_client.stop()
             
+            # End database session and send recap
+            await self.cog._end_session(player)
+
             # Disconnect
             await player.voice_client.disconnect()
             player.voice_client = None
-            
-            # Session Ended Embed
-            session_embed = discord.Embed(
-                title="🏁 Playback Finished",
-                description="This music session has ended.\n*Session summary and stats will appear here in the future.*",
-                color=discord.Color.dark_grey()
-            )
-            session_embed.timestamp = datetime.now(UTC)
-            
-            # Edit the last Now Playing message if it exists
-            if player.last_np_msg:
-                try:
-                    await player.last_np_msg.edit(embed=session_embed, view=SessionEndedView(self.cog, self.guild_id))
-                except Exception as e:
-                    logger.debug(f"Failed to edit session end embed: {e}")
-                player.last_np_msg = None
 
             duration = await self.cog._get_ephemeral_duration(self.guild_id)
             await interaction.response.send_message("⏹️ Stopped and cleared queue!", delete_after=duration)
@@ -222,8 +209,10 @@ class MusicCog(commands.Cog):
             self._idle_check_task.cancel()
         
         # Disconnect from all voice channels
-        for player in self.players.values():
+        for player in list(self.players.values()):
             if player.voice_client:
+                # End session before disconnect
+                await self._end_session(player)
                 await player.voice_client.disconnect(force=True)
         
         logger.info("Music cog unloaded")
@@ -725,6 +714,12 @@ class MusicCog(commands.Cog):
                                 guild_id=player.guild_id,
                                 channel_id=player.voice_client.channel.id
                             )
+
+                            # Log initial listeners
+                            for m in player.voice_client.channel.members:
+                                if not m.bot:
+                                    await user_crud.get_or_create(m.id, m.name)
+                                    await playback_crud.add_listener(player.session_id, m.id)
                         
                         # 2. Check Song Existence and Persistence Policy
                         if not item.song_db_id:
@@ -1209,6 +1204,94 @@ class MusicCog(commands.Cog):
                     
         except Exception as e:
             logger.debug(f"Song preparation failed: {e}")
+
+    async def _end_session(self, player: GuildPlayer):
+        """End a playback session, send recap, and cleanup."""
+        if not player.session_id:
+            return
+
+        session_id = player.session_id
+        player.session_id = None
+        player.autoplay = False # Stop discovery
+
+        if not hasattr(self.bot, "db") or not self.bot.db:
+            return
+
+        try:
+            playback_crud = PlaybackCRUD(self.bot.db)
+            analytics_crud = AnalyticsCRUD(self.bot.db)
+            
+            # 1. End in DB
+            await playback_crud.end_session(session_id)
+            
+            # 2. Get Stats for Recap
+            stats = await analytics_crud.get_session_stats(session_id)
+            
+            # 3. Send Recap Embed
+            if player.text_channel_id:
+                channel = self.bot.get_channel(player.text_channel_id)
+                if channel:
+                    embed = discord.Embed(
+                        title="🏁 Session Recap",
+                        description=f"This music session has concluded.",
+                        color=discord.Color.from_rgb(124, 58, 237)
+                    )
+                    
+                    # Formatting stats
+                    total_tracks = stats.get("total_tracks", 0)
+                    if total_tracks > 0:
+                        total_secs = stats.get("total_seconds") or 0
+                        mins, secs = divmod(total_secs, 60)
+                        hours, mins = divmod(mins, 60)
+                        
+                        duration_str = f"{secs}s"
+                        if mins > 0: duration_str = f"{mins}m {duration_str}"
+                        if hours > 0: duration_str = f"{hours}h {duration_str}"
+                        
+                        embed.add_field(name="📊 Stats", value=f"**{total_tracks}** tracks played\n**{duration_str}** total time", inline=True)
+                        embed.add_field(name="👥 Listeners", value=f"**{stats.get('unique_listeners', 0)}** unique users", inline=True)
+                        
+                        if stats.get("top_artist"):
+                            embed.add_field(name="🎤 Top Artist", value=stats["top_artist"], inline=True)
+                        
+                        if stats.get("top_genre"):
+                            embed.add_field(name="🏷️ Top Genre", value=stats["top_genre"], inline=True)
+                        
+                        # Discovery breakdown
+                        breakdown = stats.get("discovery_breakdown", {})
+                        if breakdown:
+                            requested = breakdown.get("user_request", 0)
+                            discovered = sum(v for k, v in breakdown.items() if k != "user_request")
+                            total = requested + discovered
+                            if total > 0:
+                                req_pct = round((requested / total) * 100)
+                                disc_pct = 100 - req_pct
+                                embed.add_field(
+                                    name="✨ Discovery Rate", 
+                                    value=f"🙋 {req_pct}% Requests\n🎲 {disc_pct}% Autoplay", 
+                                    inline=False
+                                )
+                    else:
+                        embed.description = "No tracks were played during this session."
+
+                    embed.set_footer(text="Vexo Music • Quality Audio Discovery")
+                    embed.timestamp = datetime.now(UTC)
+
+                    # Update Now Playing message if possible, else send new
+                    updated = False
+                    if player.last_np_msg:
+                        try:
+                            await player.last_np_msg.edit(embed=embed, view=SessionEndedView(self, player.guild_id))
+                            updated = True
+                        except: pass
+                    
+                    if not updated:
+                        await channel.send(embed=embed, view=SessionEndedView(self, player.guild_id))
+                    
+                    player.last_np_msg = None
+
+        except Exception as e:
+            logger.error(f"Failed to generate session recap: {e}")
     
     async def _idle_check_loop(self):
         """Check for idle players and disconnect."""
@@ -1221,6 +1304,7 @@ class MusicCog(commands.Cog):
                     # Check if idle for too long
                     if not player.is_playing and (now - player.last_activity).seconds > self.IDLE_TIMEOUT:
                         logger.info(f"Disconnecting from {guild_id} due to inactivity")
+                        await self._end_session(player)
                         await player.voice_client.disconnect()
                         player.voice_client = None
     
@@ -1241,13 +1325,34 @@ class MusicCog(commands.Cog):
         if not player or not player.voice_client:
             return
         
+        # Handle session listener joins/leaves
+        if player.session_id and hasattr(self.bot, "db"):
+            try:
+                playback_crud = PlaybackCRUD(self.bot.db)
+                user_crud = UserCRUD(self.bot.db)
+                
+                # Case: Joined our channel
+                if after.channel and player.voice_client and after.channel.id == player.voice_client.channel.id:
+                    if not before.channel or before.channel.id != after.channel.id:
+                        await user_crud.get_or_create(member.id, member.name)
+                        await playback_crud.add_listener(player.session_id, member.id)
+                
+                # Case: Left our channel
+                elif before.channel and player.voice_client and before.channel.id == player.voice_client.channel.id:
+                    if not after.channel or after.channel.id != before.channel.id:
+                        await playback_crud.remove_listener(player.session_id, member.id)
+            except Exception as e:
+                logger.debug(f"Failed to update listener status: {e}")
+
         # Check if bot is alone in voice channel
-        if player.voice_client.channel:
+        if player.voice_client and player.voice_client.channel:
             members = [m for m in player.voice_client.channel.members if not m.bot]
             if not members:
                 # Everyone left, stop and disconnect
                 if player.voice_client.is_playing():
                     player.voice_client.stop()
+                
+                await self._end_session(player)
                 await player.voice_client.disconnect()
                 player.voice_client = None
                 logger.info(f"Disconnected from {member.guild.name} - everyone left")

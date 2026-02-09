@@ -117,6 +117,27 @@ class MusicBot(commands.Bot):
             name="/play"
         )
         await self.change_presence(activity=activity)
+
+        # Cleanup stale sessions
+        await self._cleanup_stale_sessions()
+
+    async def _cleanup_stale_sessions(self) -> None:
+        """Mark sessions that were interrupted by a crash/restart as ended."""
+        if not self.db:
+            return
+            
+        from src.database.crud import PlaybackCRUD
+        playback_crud = PlaybackCRUD(self.db)
+        
+        try:
+            stale_sessions = await playback_crud.get_stale_sessions()
+            if stale_sessions:
+                logger.info(f"Found {len(stale_sessions)} stale sessions. Cleaning up...")
+                for session in stale_sessions:
+                    await playback_crud.end_session(session["id"])
+                logger.info("Stale sessions cleaned up.")
+        except Exception as e:
+            logger.error(f"Failed to cleanup stale sessions: {e}")
     
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Called when the bot joins a new guild."""

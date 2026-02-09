@@ -278,8 +278,14 @@ class PlaybackCRUD:
     async def end_session(self, session_id: str) -> None:
         """End a playback session."""
         await self.db.execute(
-            "UPDATE playback_sessions SET ended_at = ? WHERE id = ?",
+            "UPDATE playback_sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL",
             (datetime.now(UTC), session_id)
+        )
+
+    async def get_stale_sessions(self) -> list[dict]:
+        """Get sessions that haven't been ended."""
+        return await self.db.fetch_all(
+            "SELECT * FROM playback_sessions WHERE ended_at IS NULL"
         )
     
     async def add_listener(self, session_id: str, user_id: int) -> None:
@@ -735,6 +741,61 @@ class AnalyticsCRUD:
             LIMIT ?
         """
         return await self.db.fetch_all(query, (limit,))
+
+    async def get_session_stats(self, session_id: str) -> dict:
+        """Get summary statistics for a specific playback session."""
+        stats = {}
+        
+        # 1. Basic counts
+        query_basic = """
+            SELECT 
+                COUNT(*) as total_tracks,
+                SUM(s.duration_seconds) as total_seconds,
+                (SELECT COUNT(DISTINCT user_id) FROM session_listeners WHERE session_id = ?) as unique_listeners
+            FROM playback_history ph
+            JOIN songs s ON ph.song_id = s.id
+            WHERE ph.session_id = ?
+        """
+        basic = await self.db.fetch_one(query_basic, (session_id, session_id))
+        stats.update(dict(basic) if basic else {"total_tracks": 0, "total_seconds": 0, "unique_listeners": 0})
+        
+        # 2. Top Artist
+        query_artist = """
+            SELECT s.artist_name, COUNT(*) as count
+            FROM playback_history ph
+            JOIN songs s ON ph.song_id = s.id
+            WHERE ph.session_id = ?
+            GROUP BY s.artist_name
+            ORDER BY count DESC
+            LIMIT 1
+        """
+        artist = await self.db.fetch_one(query_artist, (session_id,))
+        stats["top_artist"] = artist["artist_name"] if artist else None
+        
+        # 3. Top Genre
+        query_genre = """
+            SELECT sg.genre, COUNT(*) as count
+            FROM playback_history ph
+            JOIN song_genres sg ON ph.song_id = sg.song_id
+            WHERE ph.session_id = ?
+            GROUP BY sg.genre
+            ORDER BY count DESC
+            LIMIT 1
+        """
+        genre = await self.db.fetch_one(query_genre, (session_id,))
+        stats["top_genre"] = genre["genre"].title() if genre else None
+        
+        # 4. Discovery Breakdown
+        query_discovery = """
+            SELECT discovery_source, COUNT(*) as count
+            FROM playback_history ph
+            WHERE ph.session_id = ?
+            GROUP BY discovery_source
+        """
+        discovery = await self.db.fetch_all(query_discovery, (session_id,))
+        stats["discovery_breakdown"] = {row["discovery_source"]: row["count"] for row in discovery}
+        
+        return stats
 
 
 class LibraryCRUD:
