@@ -533,7 +533,8 @@ class MusicCog(commands.Cog):
         if not player.is_playing:
             asyncio.create_task(self._play_loop(player))
         
-        await interaction.followup.send("🎲 **Discovery mode activated!** Finding songs for you...", ephemeral=True)
+        duration = await self._get_ephemeral_duration(interaction.guild_id)
+        await interaction.followup.send(f"🎲 **Discovery mode activated!** Finding songs for you...", delete_after=duration)
     
     @app_commands.command(name="pause", description="Pause the current song")
     async def pause(self, interaction: discord.Interaction):
@@ -672,9 +673,9 @@ class MusicCog(commands.Cog):
         """Toggle autoplay mode."""
         player = self.get_player(interaction.guild_id)
         player.autoplay = enabled
-        
-        status = "enabled" if enabled else "disabled"
-        await interaction.response.send_message(f"🎲 Autoplay {status}", ephemeral=True)
+        duration = await self._get_ephemeral_duration(interaction.guild_id)
+        msg = "✅ Autoplay enabled!" if enabled else "❌ Autoplay disabled!"
+        await interaction.response.send_message(msg, delete_after=duration)
     
     # ==================== PLAYBACK LOOP ====================
     
@@ -1296,9 +1297,11 @@ class SessionEndedView(discord.ui.View):
             asyncio.create_task(self.cog._play_loop(player))
             
             # Followup to confirm start
-            await interaction.followup.send("🚀 Starting new discovery session!", ephemeral=True)
+            duration = await self.cog._get_ephemeral_duration(self.guild_id)
+            await interaction.followup.send("🚀 Starting new discovery session!", delete_after=duration)
         else:
-            await interaction.followup.send("ℹ️ A session is already active!", ephemeral=True)
+            duration = await self.cog._get_ephemeral_duration(self.guild_id)
+            await interaction.followup.send("ℹ️ A session is already active!", delete_after=duration)
 
 
 async def setup(bot: commands.Bot):
