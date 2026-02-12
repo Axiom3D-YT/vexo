@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor
 
 import yt_dlp
 from ytmusicapi import YTMusic
@@ -58,26 +59,43 @@ class YouTubeService:
         self.yt = YTMusic()
         self.cookies_path = cookies_path
         self.po_token = po_token
+        
+        # Dedicated executor for YouTube operations to prevent blocking main thread pool
+        self.executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="YouTubeWorker")
+        
         self._ydl_opts = {
             "format": "bestaudio/best",
             "source_address": "0.0.0.0",
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
+            "socket_timeout": 10,  # Strict socket timeout
+            "nocheckcertificate": True,
+            "ignoreerrors": True,
+            "logtostderr": False,
+            "noplaylist": True,
         }
         if cookies_path:
             self._ydl_opts["cookiefile"] = cookies_path
         if po_token:
             self._ydl_opts["extractor_args"] = {"youtube": {"po_token": [po_token]}}
+            
+    async def shutdown(self):
+        """Shutdown the executor."""
+        self.executor.shutdown(wait=False)
     
     @retry_with_backoff()
     async def search(self, query: str, filter_type: str = "songs", limit: int = 5) -> list[YTTrack]:
         """Search YouTube Music for tracks."""
         loop = asyncio.get_event_loop()
         try:
-            results = await loop.run_in_executor(
-                None,
-                partial(self.yt.search, query, filter=filter_type, limit=limit)
+            # Wrap blocking call in executor with timeout
+            results = await asyncio.wait_for(
+                loop.run_in_executor(
+                    self.executor,
+                    partial(self.yt.search, query, filter=filter_type, limit=limit)
+                ),
+                timeout=15.0
             )
             
             tracks = []
@@ -107,6 +125,9 @@ class YouTubeService:
                 ))
             
             return tracks
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube search timed out for query: {query}")
+            return []
         except Exception as e:
             logger.error(f"YouTube search error: {e}")
             return []
@@ -116,9 +137,12 @@ class YouTubeService:
         """Get related tracks from a video's watch playlist."""
         loop = asyncio.get_event_loop()
         try:
-            results = await loop.run_in_executor(
-                None,
-                partial(self.yt.get_watch_playlist, videoId=video_id, limit=limit)
+            results = await asyncio.wait_for(
+                loop.run_in_executor(
+                    self.executor,
+                    partial(self.yt.get_watch_playlist, videoId=video_id, limit=limit)
+                ),
+                timeout=15.0
             )
             
             tracks = []
@@ -139,6 +163,9 @@ class YouTubeService:
                 ))
             
             return tracks
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube watch playlist timed out for video: {video_id}")
+            return []
         except Exception as e:
             logger.error(f"Error getting watch playlist: {e}")
             return []
@@ -148,9 +175,12 @@ class YouTubeService:
         """Get tracks from a YouTube Music playlist."""
         loop = asyncio.get_event_loop()
         try:
-            results = await loop.run_in_executor(
-                None,
-                partial(self.yt.get_playlist, playlist_id, limit=limit)
+            results = await asyncio.wait_for(
+                loop.run_in_executor(
+                    self.executor,
+                    partial(self.yt.get_playlist, playlist_id, limit=limit)
+                ),
+                timeout=20.0
             )
             
             tracks = []
@@ -170,6 +200,9 @@ class YouTubeService:
                 ))
             
             return tracks
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube playlist fetch timed out for: {playlist_id}")
+            return []
         except Exception as e:
             logger.error(f"Error getting playlist: {e}")
             return []
@@ -179,9 +212,12 @@ class YouTubeService:
         """Get full track info for a specific video."""
         loop = asyncio.get_event_loop()
         try:
-            r = await loop.run_in_executor(
-                None,
-                partial(self.yt.get_song, videoId=video_id)
+            r = await asyncio.wait_for(
+                loop.run_in_executor(
+                    self.executor,
+                    partial(self.yt.get_song, videoId=video_id)
+                ),
+                timeout=10.0
             )
             
             video_details = r.get("videoDetails", {})
@@ -201,6 +237,9 @@ class YouTubeService:
                 duration_seconds=int(video_details["lengthSeconds"]) if video_details.get("lengthSeconds") else None,
                 thumbnail_url=video_details.get("thumbnail", {}).get("thumbnails", [{}])[-1].get("url")
             )
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube track info timed out for: {video_id}")
+            return None
         except Exception as e:
             logger.error(f"Error getting track info: {e}")
             return None
@@ -216,7 +255,14 @@ class YouTubeService:
                     info = ydl.extract_info(url, download=False)
                     return info.get("url")
             
-            return await loop.run_in_executor(None, extract)
+            # Use dedicated executor and longer timeout for extraction
+            return await asyncio.wait_for(
+                loop.run_in_executor(self.executor, extract),
+                timeout=25.0
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube stream URL extraction timed out for: {video_id}")
+            return None
         except Exception as e:
             logger.error(f"Error getting stream URL for {video_id}: {e}")
             return None
@@ -226,9 +272,12 @@ class YouTubeService:
         """Search for playlists."""
         loop = asyncio.get_event_loop()
         try:
-            results = await loop.run_in_executor(
-                None,
-                partial(self.yt.search, query, filter="playlists", limit=limit)
+            results = await asyncio.wait_for(
+                loop.run_in_executor(
+                    self.executor,
+                    partial(self.yt.search, query, filter="playlists", limit=limit)
+                ),
+                timeout=15.0
             )
             return [
                 {
@@ -238,6 +287,9 @@ class YouTubeService:
                 }
                 for r in results if r.get("browseId")
             ]
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube playlist search timed out for: {query}")
+            return []
         except Exception as e:
             logger.error(f"Error searching playlists: {e}")
             return []

@@ -881,14 +881,18 @@ class MusicCog(commands.Cog):
                             logger.info(f"TEST MODE: Time limit reached ({timeout_duration}s), skipping...")
                         else:
                             logger.warning(f"WATCHDOG: Song {item.title} timed out after {timeout_duration}s. Recovering event loop...")
+                            # Proactively log this event
+                            logger.error(f"Playback stuck detected for {item.title} (Duration: {item.duration_seconds}s). Force stopping.")
                         
                         if player.voice_client and player.voice_client.is_playing():
                             player.voice_client.stop()
                         
                         # Wait a tiny bit for after_play to trigger and play_complete to set
                         try:
-                            await asyncio.wait_for(play_complete.wait(), timeout=1.0)
-                        except: pass
+                            await asyncio.wait_for(play_complete.wait(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                             # If it still hasn't set, manually set it to break any other waiters
+                             play_complete.set()
                     # ---------------------------------------------------
 
                     # Database: Log Playback End
