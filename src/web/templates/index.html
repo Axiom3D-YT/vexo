@@ -523,6 +523,12 @@
                 <div class="card">
                     <div class="card-header">
                         <h2 class="card-title">📜 System Logs</h2>
+                        <div
+                            style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+                            <label for="autoscroll-toggle" style="cursor: pointer;">Autoscroll</label>
+                            <input type="checkbox" id="autoscroll-toggle" checked
+                                style="cursor: pointer; transform: scale(1.2);">
+                        </div>
                     </div>
                     <div id="logs" class="log-container">
                         <!-- Logs populated by WS -->

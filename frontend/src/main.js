@@ -116,9 +116,28 @@ setInterval(async () => {
     }
 }, 10000); // Check every 10s if WS is down
 
+let autoscrollEnabled = true;
+
+// Initialize autoscroll toggle listener
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('autoscroll-toggle');
+    if (toggle) {
+        toggle.addEventListener('change', (e) => {
+            autoscrollEnabled = e.target.checked;
+            if (autoscrollEnabled) {
+                const logsEl = document.getElementById('logs');
+                if (logsEl) logsEl.scrollTop = logsEl.scrollHeight;
+            }
+        });
+    }
+});
+
 function addLogEntry(log) {
     const logsEl = document.getElementById('logs');
     if (!logsEl) return;
+
+    // Smart autoscroll: Check if user is near the bottom
+    const isAtBottom = logsEl.scrollHeight - logsEl.scrollTop <= logsEl.clientHeight + 50;
 
     // Create a unique key for the log to prevent duplicates
     const logId = `${log.timestamp}-${log.level}-${log.message.substring(0, 50)}`;
@@ -130,13 +149,14 @@ function addLogEntry(log) {
     entry.className = `log-entry log-${log.level}`;
     entry.innerHTML = `<span class="log-time">${time}</span> [${log.level}] ${log.message}`;
     logsEl.appendChild(entry);
-    logsEl.scrollTop = logsEl.scrollHeight;
 
-    while (logsEl.children.length > 500) { // Keep more in UI
+    // Only scroll if enabled AND user is already at the bottom
+    if (autoscrollEnabled && isAtBottom) {
+        logsEl.scrollTop = logsEl.scrollHeight;
+    }
+
+    while (logsEl.children.length > 500) {
         logsEl.removeChild(logsEl.firstChild);
-        // Note: We don't prune displayedLogIds here to simplify, 
-        // but in a long-running session it might grow. 
-        // For 1000 logs it's negligible memory.
     }
 }
 
