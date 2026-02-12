@@ -264,18 +264,12 @@ class DashboardCog(commands.Cog):
         queue_duration_mins = 0
         if player:
             queue_size = player.queue.qsize()
-            # Calculate total duration of remaining songs in queue
             total_seconds = 0
-            # PriorityQueue doesn't allow direct iteration easily without consuming
-            # but we can look at the internal _queue list
             for _, _, item in list(player.queue._queue):
                 if hasattr(item, 'duration_seconds') and item.duration_seconds:
                     total_seconds += item.duration_seconds
-            
-            # Add current song duration if any
             if player.current and player.current.duration_seconds:
                  total_seconds += player.current.duration_seconds
-                 
             queue_duration_mins = round(total_seconds / 60, 1)
 
         return web.json_response({
@@ -303,12 +297,10 @@ class DashboardCog(commands.Cog):
             from src.database.crud import GuildCRUD
             crud = GuildCRUD(self.bot.db)
             
-            # Ensure guild exists in DB to prevent Foreign Key errors
             guild = self.bot.get_guild(guild_id)
             guild_name = guild.name if guild else f"Guild {guild_id}"
             await crud.get_or_create(guild_id, guild_name)
             
-            # Save settings
             if "pre_buffer" in data:
                 await crud.set_setting(guild_id, "pre_buffer", str(data["pre_buffer"]).lower())
             if "buffer_amount" in data:
@@ -322,10 +314,8 @@ class DashboardCog(commands.Cog):
             if "discovery_weights" in data:
                  await crud.set_setting(guild_id, "discovery_weights", data["discovery_weights"])
             if "metadata_config" in data:
-                 logger.debug(f"Dashboard: Saving metadata_config for guild {guild_id}: {data['metadata_config']}")
                  await crud.set_setting(guild_id, "metadata_config", data["metadata_config"])
                  
-            # Apply to active player if exists
             music = self.bot.get_cog("MusicCog")
             if music:
                 player = music.get_player(guild_id)
@@ -336,7 +326,6 @@ class DashboardCog(commands.Cog):
         return web.json_response({"status": "ok"})
     
     async def _handle_control(self, request: web.Request) -> web.Response:
-        """Handle playback controls."""
         guild_id = int(request.match_info["guild_id"])
         action = request.match_info["action"]
         
@@ -354,130 +343,81 @@ class DashboardCog(commands.Cog):
                     player.voice_client.pause()
                 elif player.voice_client.is_paused():
                     player.voice_client.resume()
-            
             elif action == "skip":
                 player.voice_client.stop()
-            
             elif action == "stop":
-                # Clear queue and stop
                 while not player.queue.empty():
-                    try:
-                        player.queue.get_nowait()
-                    except (asyncio.QueueEmpty, Exception):
-                        break
-                
+                    try: player.queue.get_nowait()
+                    except: break
                 if player.voice_client.is_playing() or player.voice_client.is_paused():
                     player.voice_client.stop()
-                
                 await player.voice_client.disconnect()
-            
             return web.json_response({"status": "ok", "action": action})
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
     
     async def _handle_songs(self, request: web.Request) -> web.Response:
-        """Get song library."""
         if not hasattr(self.bot, "db"):
             return web.json_response({"songs": []})
-        
         guild_id = request.query.get("guild_id")
         params = []
         where_clause = ""
-        
         if guild_id:
-            # Filter by playback history in this guild
             where_clause = "WHERE ps.guild_id = ?"
             params.append(int(guild_id))
         
         query = f"""
-            SELECT 
-                ph.played_at,
-                s.title,
-                s.artist_name,
-                s.duration_seconds,
-                (SELECT GROUP_CONCAT(DISTINCT sg.genre) FROM song_genres sg WHERE sg.song_id = s.id) as genre,
-                CASE WHEN ph.discovery_source = 'user_request' THEN u.username ELSE NULL END as requested_by,
-                (SELECT GROUP_CONCAT(DISTINCT u2.username) 
-                 FROM song_reactions sr 
-                 JOIN users u2 ON sr.user_id = u2.id 
-                 WHERE sr.song_id = s.id AND sr.reaction = 'like') as liked_by,
-                (SELECT GROUP_CONCAT(DISTINCT u2.username) 
-                 FROM song_reactions sr 
-                 JOIN users u2 ON sr.user_id = u2.id 
-                 WHERE sr.song_id = s.id AND sr.reaction = 'dislike') as disliked_by
-            FROM playback_history ph
-            JOIN songs s ON ph.song_id = s.id
-            JOIN playback_sessions ps ON ph.session_id = ps.id
-            LEFT JOIN users u ON ph.for_user_id = u.id
-            {where_clause}
-            ORDER BY ph.played_at DESC
-            LIMIT 100
+            SELECT ph.played_at, s.title, s.artist_name, s.duration_seconds,
+            (SELECT GROUP_CONCAT(DISTINCT sg.genre) FROM song_genres sg WHERE sg.song_id = s.id) as genre,
+            CASE WHEN ph.discovery_source = 'user_request' THEN u.username ELSE NULL END as requested_by,
+            (SELECT GROUP_CONCAT(DISTINCT u2.username) FROM song_reactions sr JOIN users u2 ON sr.user_id = u2.id WHERE sr.song_id = s.id AND sr.reaction = 'like') as liked_by,
+            (SELECT GROUP_CONCAT(DISTINCT u2.username) FROM song_reactions sr JOIN users u2 ON sr.user_id = u2.id WHERE sr.song_id = s.id AND sr.reaction = 'dislike') as disliked_by
+            FROM playback_history ph JOIN songs s ON ph.song_id = s.id JOIN playback_sessions ps ON ph.session_id = ps.id LEFT JOIN users u ON ph.for_user_id = u.id
+            {where_clause} ORDER BY ph.played_at DESC LIMIT 100
         """
         songs = await self.bot.db.fetch_all(query, tuple(params))
-        
-        # Serialize for JSON
         data = []
         for s in songs:
             item = dict(s)
-            # Handle datetime fields if they exist as objects
-            for key in ["created_at", "last_played"]:
-                if key in item and item[key]:
-                    if hasattr(item[key], "isoformat"): # datetime object
-                        item[key] = item[key].isoformat()
-                    # If string, leave as is
+            for key in ["created_at", "last_played", "played_at"]:
+                if key in item and item[key] and hasattr(item[key], "isoformat"):
+                    item[key] = item[key].isoformat()
             data.append(item)
-            
         return web.json_response({"songs": data})
     
     async def _get_analytics_data(self, guild_id=None):
-        if not hasattr(self.bot, "db"):
-            return {"error": "No database"}
-        
+        if not hasattr(self.bot, "db"): return {"error": "No database"}
         from src.database.crud import AnalyticsCRUD
         crud = AnalyticsCRUD(self.bot.db)
-        
         gid = int(guild_id) if guild_id else None
         
-        top_songs = await crud.get_top_songs(limit=5, guild_id=gid)
-        top_users = await crud.get_top_users(limit=5, guild_id=gid)
+        top_songs = await crud.get_top_songs(limit=10, guild_id=gid)
+        top_users = await crud.get_top_users(limit=10, guild_id=gid)
         stats = await crud.get_total_stats(guild_id=gid)
-        
         top_liked_songs = await crud.get_top_liked_songs(limit=5)
         top_liked_artists = await crud.get_top_liked_artists(limit=5)
         top_liked_genres = await crud.get_top_liked_genres(limit=5)
         top_played_artists = await crud.get_top_played_artists(limit=5, guild_id=gid)
         top_played_genres = await crud.get_top_played_genres(limit=5, guild_id=gid)
         top_useful_users = await crud.get_top_useful_users(limit=5)
-        
-        # Get 7-day trends
         playback_trends = await crud.get_playback_trends(days=7, guild_id=gid)
         peak_hours = await crud.get_peak_hours(days=30, guild_id=gid)
 
         formatted_users = []
         for u in top_users:
-            d = dict(u) if not isinstance(u, dict) else u
+            d = dict(u)
             formatted_users.append({
-                "id": str(d["id"]),
-                "name": d["username"],
-                "plays": d["plays"],
-                "total_likes": d["reactions"],
-                "playlists_imported": d["playlists"],
+                "id": str(d["id"]), "name": d["username"], "plays": d["plays"],
+                "total_likes": d["reactions"], "playlists_imported": d["playlists"],
             })
 
         return {
-            "total_songs": stats["total_songs"],
-            "total_users": stats["total_users"],
-            "total_plays": stats["total_plays"],
-            "playback_trends": playback_trends,
-            "peak_hours": peak_hours,
-            "top_songs": [dict(r) for r in top_songs],
-            "top_users": formatted_users,
-            "top_liked_songs": [dict(r) for r in top_liked_songs],
-            "top_liked_artists": [dict(r) for r in top_liked_artists],
-            "top_liked_genres": [dict(r) for r in top_liked_genres],
-            "top_played_artists": [dict(r) for r in top_played_artists],
-            "top_played_genres": [dict(r) for r in top_played_genres],
-            "top_useful_users": [dict(r) for r in top_useful_users],
+            "total_songs": stats["total_songs"], "total_users": stats["total_users"], "total_plays": stats["total_plays"],
+            "playback_trends": playback_trends, "peak_hours": peak_hours,
+            "top_songs": [dict(r) for r in top_songs], "top_users": formatted_users,
+            "top_liked_songs": [dict(r) for r in top_liked_songs], "top_liked_artists": [dict(r) for r in top_liked_artists],
+            "top_liked_genres": [dict(r) for r in top_liked_genres], "top_played_artists": [dict(r) for r in top_played_artists],
+            "top_played_genres": [dict(r) for r in top_played_genres], "top_useful_users": [dict(r) for r in top_useful_users],
         }
 
     async def _handle_analytics(self, request: web.Request) -> web.Response:
@@ -485,86 +425,48 @@ class DashboardCog(commands.Cog):
         data = await self._get_analytics_data(guild_id)
         return web.json_response(data)
     
-    async def _handle_top_songs(self, request: web.Request) -> web.Response:
-        """Get top songs list."""
-        if not hasattr(self.bot, "db"):
-             return web.json_response({"songs": []})
-        
-        from src.database.crud import AnalyticsCRUD
-        crud = AnalyticsCRUD(self.bot.db)
-        
-        guild_id = request.query.get("guild_id")
-        gid = int(guild_id) if guild_id else None
-        
-        songs = await crud.get_top_songs(limit=10, guild_id=gid)
-        return web.json_response({"songs": [dict(r) for r in songs]})
-    
     async def _handle_users(self, request: web.Request) -> web.Response:
-        """Get users list."""
-        if not hasattr(self.bot, "db"):
-             return web.json_response({"users": []})
-             
+        if not hasattr(self.bot, "db"): return web.json_response({"users": []})
         from src.database.crud import AnalyticsCRUD
         crud = AnalyticsCRUD(self.bot.db)
-        
         guild_id = request.query.get("guild_id")
         gid = int(guild_id) if guild_id else None
-        
         users = await crud.get_top_users(limit=50, guild_id=gid)
-        
-        # Format
         data = []
         for u in users:
-            d = dict(u)
-            d["formatted_id"] = str(d["id"])
+            d = dict(u); d["formatted_id"] = str(d["id"])
             data.append(d)
         return web.json_response({"users": data})
 
     async def _handle_global_settings(self, request: web.Request) -> web.Response:
-        """Get or update global settings."""
-        if not hasattr(self.bot, "db"):
-            return web.json_response({})
-        
+        if not hasattr(self.bot, "db"): return web.json_response({})
         from src.database.crud import SystemCRUD
         crud = SystemCRUD(self.bot.db)
-        
         if request.method == "POST":
             data = await request.json()
-            for key, value in data.items():
-                await crud.set_global_setting(key, value)
+            for key, value in data.items(): await crud.set_global_setting(key, value)
             return web.json_response({"status": "ok"})
         else:
             limit = await crud.get_global_setting("max_concurrent_servers")
             test_mode = await crud.get_global_setting("test_mode")
             test_duration = await crud.get_global_setting("playback_duration")
-            
             return web.json_response({
-                "max_concurrent_servers": limit,
-                "test_mode": test_mode,
-                "playback_duration": test_duration or 30
+                "max_concurrent_servers": limit, "test_mode": test_mode, "playback_duration": test_duration or 30
             })
 
     async def _get_notifications_data(self):
-        if not hasattr(self.bot, "db"):
-            return {"notifications": []}
-        
+        if not hasattr(self.bot, "db"): return {"notifications": []}
         from src.database.crud import SystemCRUD
         crud = SystemCRUD(self.bot.db)
         notifications = await crud.get_recent_notifications()
         data = []
         for n in notifications:
             d = dict(n)
-            if isinstance(n["created_at"], str):
-                try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(n["created_at"])
-                    d["created_at"] = dt.timestamp()
-                except ValueError:
-                    d["created_at"] = 0
-            elif isinstance(n["created_at"], datetime):
-                d["created_at"] = n["created_at"].timestamp()
-            else:
-                d["created_at"] = 0
+            if isinstance(n["created_at"], datetime): d["created_at"] = n["created_at"].timestamp()
+            elif isinstance(n["created_at"], str):
+                try: d["created_at"] = datetime.fromisoformat(n["created_at"]).timestamp()
+                except: d["created_at"] = 0
+            else: d["created_at"] = 0
             data.append(d)
         return {"notifications": data}
 
@@ -573,71 +475,48 @@ class DashboardCog(commands.Cog):
         return web.json_response(data)
 
     async def _handle_dashboard_init(self, request: web.Request) -> web.Response:
-        """Consolidated endpoint for dashboard initialization."""
         status_data = await self._get_status_data()
         guilds_data = await self._get_guilds_data()
         analytics_data = await self._get_analytics_data()
         notifications_data = await self._get_notifications_data()
-        
         return web.json_response({
-            "status": status_data,
-            "guilds": guilds_data["guilds"],
-            "analytics": analytics_data,
-            "notifications": notifications_data["notifications"]
+            "status": status_data, "guilds": guilds_data["guilds"],
+            "analytics": analytics_data, "notifications": notifications_data["notifications"]
         })
 
     async def _handle_leave_guild(self, request: web.Request) -> web.Response:
-        """Force bot to leave a guild."""
         guild_id = int(request.match_info["guild_id"])
         guild = self.bot.get_guild(guild_id)
         if guild:
             await guild.leave()
-            
-            # Log notification
             if hasattr(self.bot, "db"):
                 from src.database.crud import SystemCRUD
                 crud = SystemCRUD(self.bot.db)
                 await crud.add_notification("info", f"Manually left server: {guild.name}")
-                
             return web.json_response({"status": "ok"})
         return web.json_response({"error": "Guild not found"}, status=404)
 
     async def _handle_library(self, request: web.Request) -> web.Response:
-        """Get unified song library."""
-        if not hasattr(self.bot, "db"):
-            return web.json_response({"library": []})
-        
+        if not hasattr(self.bot, "db"): return web.json_response({"library": []})
         guild_id = request.query.get("guild_id")
-        if guild_id:
-            guild_id = int(guild_id)
-            
+        if guild_id: guild_id = int(guild_id)
         from src.database.crud import LibraryCRUD
         crud = LibraryCRUD(self.bot.db)
         library = await crud.get_library(guild_id=guild_id)
-        
-        log_guild = f"guild {guild_id}" if guild_id else "Global Library"
-        logger.info(f"Fetched library for {log_guild}: {len(library)} entries")
-        
-        # Serialize timestamps
         for entry in library:
             if "last_added" in entry and isinstance(entry["last_added"], datetime):
                 entry["last_added"] = entry["last_added"].isoformat()
-                
         return web.json_response({"library": library})
 
-    
     async def _handle_user_prefs(self, request: web.Request) -> web.Response:
         user_id = int(request.match_info["user_id"])
-        if not hasattr(self.bot, "db"):
-            return web.json_response({})
-        
+        if not hasattr(self.bot, "db"): return web.json_response({})
         from src.database.crud import PreferenceCRUD
         crud = PreferenceCRUD(self.bot.db)
         prefs = await crud.get_all_preferences(user_id)
         return web.json_response(prefs)
     
     async def _api_get_logs(self, request: web.Request) -> web.Response:
-        """Endpoint to fetch the latest logs for fallback polling."""
         return web.json_response({"logs": list(self.ws_manager.recent_logs)})
 
     async def _handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
@@ -649,8 +528,7 @@ class DashboardCog(commands.Cog):
         for log in self.ws_manager.recent_logs:
             await ws.send_json(log)
         try:
-            async for _ in ws:
-                pass
+            async for _ in ws: pass
         finally:
             self.ws_manager.clients.discard(ws)
         return ws
