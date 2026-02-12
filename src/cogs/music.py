@@ -14,6 +14,7 @@ from discord.ext import commands
 from src.services.youtube import YouTubeService, YTTrack
 from src.services.discogs import DiscogsService
 from src.services.musicbrainz import MusicBrainzService
+from src.services.groq import GroqService
 from src.database.crud import SongCRUD, UserCRUD, PlaybackCRUD, ReactionCRUD, GuildCRUD, AnalyticsCRUD
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class GuildPlayer:
     _next_url: str | None = None  # Pre-buffered URL
     text_channel_id: int | None = None  # For Now Playing messages
     last_np_msg: discord.Message | None = None
+    last_script_msg: discord.Message | None = None # Track the DJ Script message
     _queue_counter: int = 0  # To maintain FIFO in PriorityQueue
 
 
@@ -201,6 +203,13 @@ class MusicCog(commands.Cog):
         self.youtube = YouTubeService()
         self.discogs = DiscogsService()
         self.musicbrainz = MusicBrainzService()
+        self.groq = GroqService()
+        
+        # FFMPEG Options
+        self.FFMPEG_OPTIONS = {
+            "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin -timeout 10000000",
+            "options": "-vn",
+        }
         self._idle_check_task: asyncio.Task | None = None
     
     async def cog_load(self):
@@ -866,6 +875,9 @@ class MusicCog(commands.Cog):
                     logger.info(f"Playing: {item.title} | {item.artist} | {item.genre or 'Unknown Genre'} | {log_user} | {log_source}")
                     # Send Now Playing embed
                     await self._send_now_playing(player)
+
+                    # Trigger DJ Script Generation (Fire-and-forget task)
+                    asyncio.create_task(self._send_dj_script(player, item))
                     
                     # ---------------- PLAYBACK WATCHDOG ----------------
                     test_mode = False
@@ -1046,8 +1058,49 @@ class MusicCog(commands.Cog):
         logger.warning("Could not find any chart tracks via playlist OR direct search")
         return None
     
+    async def _send_dj_script(self, player: GuildPlayer, item: QueueItem):
+        """Generate and send/edit a DJ script for the current song."""
+        # 1. Check if we have a text channel
+        if not player.text_channel_id:
+            return
+            
+        channel = self.bot.get_channel(player.text_channel_id)
+        if not channel:
+            return
+            
+        # 2. Generate Script (Non-blocking)
+        try:
+            script_text = await self.groq.generate_script(item.title, item.artist)
+            
+            if not script_text:
+                return
+                
+            # 3. Format Content
+            content = f"```\n{script_text}\n```"
+            
+            # 4. Edit or Send
+            msg_sent = False
+            if player.last_script_msg:
+                try:
+                    await player.last_script_msg.edit(content=content)
+                    msg_sent = True
+                except (discord.NotFound, discord.Forbidden):
+                    # Message deleted or perms lost, fall through to send new one
+                    player.last_script_msg = None
+                except Exception as e:
+                    logger.warning(f"Failed to edit DJ script message: {e}")
+            
+            if not msg_sent:
+                try:
+                    player.last_script_msg = await channel.send(content)
+                except Exception as e:
+                    logger.error(f"Failed to send DJ script message: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in DJ script flow: {e}")
+
     async def _send_now_playing(self, player: GuildPlayer):
-        """Send Now Playing embed to the text channel."""
+        """Send the Now Playing embed to the text channel."""
         if not player.current or not player.text_channel_id:
             return
         
