@@ -13,10 +13,21 @@ from datetime import datetime, UTC
 from discord.ext import commands
 
 # Setup logging
+from logging.handlers import RotatingFileHandler
+
+# Ensure data directory exists for logs
+log_dir = Path("data")
+log_dir.mkdir(exist_ok=True)
+log_file = log_dir / "bot.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(log_file, maxBytes=1024*1024, backupCount=5) # 1MB per file, 5 backups
+    ]
 )
 logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 logging.getLogger("musicbrainzngs").setLevel(logging.WARNING)

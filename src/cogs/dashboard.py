@@ -126,12 +126,22 @@ class DashboardCog(commands.Cog):
         logging.getLogger().addHandler(self._log_handler)
         logger.info("Web dashboard log handler initialized and active.")
         
+        # Periodic heartbeat log to verify dashboard connectivity
+        self.bot.loop.create_task(self._heartbeat())
+        
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
         site = web.TCPSite(self.runner, self.host, self.port)
         await site.start()
         
         logger.info(f"Dashboard at http://{self.host}:{self.port}")
+    
+    async def _heartbeat(self):
+        """Periodic log entry to help verify the dashboard is receiving logs."""
+        await asyncio.sleep(5) # Wait for bot to settle
+        while True:
+            logger.info("Dashboard Heartbeat: Bot is running and logging handler is active.")
+            await asyncio.sleep(60) # Every minute
     
     async def cog_unload(self):
         if self._log_handler:
