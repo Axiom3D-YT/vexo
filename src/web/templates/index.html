@@ -504,187 +504,294 @@
                                 </div>
 
                                 <div class="form-group" style="margin-top: 1.5rem;">
-                                    <label class="form-label">Custom Prompts</label>
-                                    <div id="groq-prompts-list"
-                                        style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem;">
-                                        <!-- Dynamic inputs -->
-                                    </div>
-                                    <button class="btn btn-secondary btn-sm" onclick="addGroqPrompt()">+ Add
-                                        Prompt</button>
-                                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                                        A prompt will be randomly selected for each song.
-                                    </div>
-                                </div>
-                            </div>
-
-                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
-
-                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔊 VexoTTS Settings</h3>
-                            <div class="form-group"
-                                style="display: flex; align-items: center; justify-content: space-between;">
-                                <div>
-                                    <label class="form-label">Enable TTS</label>
-                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                                        Play the DJ script via voice in the channel.
-                                    </div>
-                                </div>
-                                <div>
-                                    <input type="checkbox" id="setting-tts-enabled" style="transform: scale(1.5);">
-                                </div>
-                            </div>
-
-                            <div id="tts-options" style="display: none;">
-                                <div class="form-group" style="margin-top: 1.5rem;">
-                                    <label class="form-label">Voice Selection</label>
-                                    <select id="setting-tts-voice" class="form-input">
-                                        <optgroup label="TikTok Voices" id="tts-voices-tiktok"></optgroup>
-                                        <optgroup label="Google Voices" id="tts-voices-gtts"></optgroup>
-                                    </select>
-                                </div>
-
-                                <div class="form-group"
-                                    style="margin-top: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-                                    <div>
-                                        <label class="form-label">Slow Mode</label>
-                                        <div style="font-size: 0.8rem; color: var(--text-muted);">
-                                            Speak at a slower pace.
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                        <label class="form-label" style="margin: 0;">Custom Prompts</label>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button class="btn btn-secondary btn-sm" onclick="showPresetLoader()">Load
+                                                Preset</button>
+                                            <button class="btn btn-primary btn-sm" onclick="openAutogenerateModal()">✨
+                                                Autogenerate</button>
                                         </div>
                                     </div>
-                                    <div>
-                                        <input type="checkbox" id="setting-tts-slow" style="transform: scale(1.5);">
+
+                                    <div id="groq-prompts-list"
+                                        style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+                                        <!-- Dynamic items with checkboxes -->
+                                    </div>
+
+                                    <button class="btn btn-secondary btn-sm" onclick="addGroqPrompt()">+ Add Custom
+                                        Prompt</button>
+
+                                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.75rem;">
+                                        A random prompt will be selected from the <strong>enabled</strong> items below
+                                        for each song.
                                     </div>
                                 </div>
                             </div>
+                        </div>
 
-                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
-
-                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">🎯 Discovery Strategies</h3>
-                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
-                                Adjust the weights for different recommendation strategies. Total must equal 100.
+                        <!-- MODALS -->
+                        <div id="preset-modal" class="modal-overlay">
+                            <div class="modal" style="max-width: 500px;">
+                                <div class="modal-header">
+                                    <h2 class="modal-title">Load Prompt Preset</h2>
+                                    <button class="btn-icon" onclick="closePresetModal()">✕</button>
+                                </div>
+                                <div class="modal-body"
+                                    style="padding: 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                    <button class="btn btn-secondary"
+                                        style="height: auto; padding: 1rem; text-align: left;"
+                                        onclick="loadPreset('friend')">
+                                        <strong>🤝 The Friend</strong><br><span
+                                            style="font-size: 0.7rem; opacity: 0.7;">Natural & Chill</span>
+                                    </button>
+                                    <button class="btn btn-secondary"
+                                        style="height: auto; padding: 1rem; text-align: left;"
+                                        onclick="loadPreset('critic')">
+                                        <strong>🧐 The Critic</strong><br><span
+                                            style="font-size: 0.7rem; opacity: 0.7;">Snarky & Technical</span>
+                                    </button>
+                                    <button class="btn btn-secondary"
+                                        style="height: auto; padding: 1rem; text-align: left;"
+                                        onclick="loadPreset('hype')">
+                                        <strong>🔥 Hype Man</strong><br><span
+                                            style="font-size: 0.7rem; opacity: 0.7;">Energetic Club Vibes</span>
+                                    </button>
+                                    <button class="btn btn-secondary"
+                                        style="height: auto; padding: 1rem; text-align: left;"
+                                        onclick="loadPreset('jazz')">
+                                        <strong>🎷 Jazz Cat</strong><br><span
+                                            style="font-size: 0.7rem; opacity: 0.7;">Smooth & Poetic</span>
+                                    </button>
+                                    <button class="btn btn-secondary"
+                                        style="height: auto; padding: 1rem; text-align: left;"
+                                        onclick="loadPreset('history')">
+                                        <strong>📚 History Buff</strong><br><span
+                                            style="font-size: 0.7rem; opacity: 0.7;">Trivia & Facts</span>
+                                    </button>
+                                    <button class="btn btn-secondary"
+                                        style="height: auto; padding: 1rem; text-align: left;"
+                                        onclick="loadPreset('zen')">
+                                        <strong>🧘 Zen Master</strong><br><span
+                                            style="font-size: 0.7rem; opacity: 0.7;">Minimal & Deep</span>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="grid" style="grid-template-columns: repeat(2, 1fr); gap: 1rem;">
-                                <div class="form-group">
-                                    <label class="form-label">Similar Song (Strategy 1)</label>
-                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="number" id="weight-similar" class="form-input weight-input"
-                                            value="60" min="0" max="100" oninput="validateWeights()">
-                                        <span>%</span>
-                                    </div>
+                        </div>
+
+                        <div id="autogen-modal" class="modal-overlay">
+                            <div class="modal" style="max-width: 500px;">
+                                <div class="modal-header">
+                                    <h2 class="modal-title">✨ Autogenerate Prompt</h2>
+                                    <button class="btn-icon" onclick="closeAutogenModal()">✕</button>
                                 </div>
-                                <div class="form-group">
-                                    <label class="form-label">Same Artist (Strategy 2)</label>
-                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="number" id="weight-artist" class="form-input weight-input"
-                                            value="10" min="0" max="100" oninput="validateWeights()">
-                                        <span>%</span>
+                                <div class="modal-body" style="padding: 1.5rem;">
+                                    <div class="form-group">
+                                        <label class="form-label">Base Persona</label>
+                                        <select id="autogen-persona" class="form-input">
+                                            <option value="DJ">Standard DJ</option>
+                                            <option value="Expert">Music Expert</option>
+                                            <option value="Fan">Passionate Fan</option>
+                                            <option value="Rapper">Street Wise</option>
+                                            <option value="Poet">Deep Thinker</option>
+                                        </select>
                                     </div>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Wildcard (Strategy 3)</label>
-                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="number" id="weight-wildcard" class="form-input weight-input"
-                                            value="30" min="0" max="100" oninput="validateWeights()">
-                                        <span>%</span>
+                                    <div class="form-group" style="margin-top: 1rem;">
+                                        <label class="form-label">Vibe / Mood</label>
+                                        <select id="autogen-vibe" class="form-input">
+                                            <option value="happy">Energetic & Happy</option>
+                                            <option value="dark">Dark & Gritty</option>
+                                            <option value="chill">Chill & Relaxed</option>
+                                            <option value="funny">Humorous & Witty</option>
+                                            <option value="sad">Emotional & Nostalgic</option>
+                                        </select>
                                     </div>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Library (Strategy 4)</label>
-                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <input type="number" id="weight-library" class="form-input weight-input"
-                                            value="0" min="0" max="100" oninput="validateWeights()">
-                                        <span>%</span>
+                                    <div class="form-group" style="margin-top: 1rem;">
+                                        <label class="form-label">Detail Level</label>
+                                        <select id="autogen-detail" class="form-input">
+                                            <option value="brief">Brief (One liner)</option>
+                                            <option value="balanced">Balanced (2-3 sentences)</option>
+                                            <option value="deep">Deep (Rich descriptions)</option>
+                                        </select>
+                                    </div>
+                                    <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                                        <button class="btn btn-primary" style="flex: 1;" onclick="applyAutogen()">Create
+                                            Prompt</button>
+                                        <button class="btn btn-secondary" onclick="closeAutogenModal()">Cancel</button>
                                     </div>
                                 </div>
                             </div>
-                            <div style="margin-top: 0.5rem; font-weight: 500; text-align: right;">
-                                Total: <span id="weights-total">100</span>%
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔊 VexoTTS Settings</h3>
+                        <div class="form-group"
+                            style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <label class="form-label">Enable TTS</label>
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                    Play the DJ script via voice in the channel.
+                                </div>
                             </div>
+                            <div>
+                                <input type="checkbox" id="setting-tts-enabled" style="transform: scale(1.5);">
+                            </div>
+                        </div>
 
-                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
-
-                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔍 Metadata Configuration</h3>
-                            <div class="form-group" style="margin-bottom: 1.5rem;">
-                                <label class="form-label">Resolution Strategy</label>
-                                <select id="meta-strategy" class="form-input" style="max-width: 300px;">
-                                    <option value="fallback">Fallback (Priority Order)</option>
-                                    <option value="consensus">Consensus (Most Agreed Genre)</option>
+                        <div id="tts-options" style="display: none;">
+                            <div class="form-group" style="margin-top: 1.5rem;">
+                                <label class="form-label">Voice Selection</label>
+                                <select id="setting-tts-voice" class="form-input">
+                                    <optgroup label="TikTok Voices" id="tts-voices-tiktok"></optgroup>
+                                    <optgroup label="Google Voices" id="tts-voices-gtts"></optgroup>
                                 </select>
                             </div>
 
-                            <div class="metadata-grid" style="display: grid; gap: 1rem;">
-                                <!-- Spotify -->
-                                <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
-                                    <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                        <div style="font-weight: 600;">Spotify</div>
-                                        <input type="checkbox" id="meta-spotify-enabled" checked disabled>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label" style="font-size: 0.8rem;">Priority</label>
-                                        <input type="number" id="meta-spotify-prio" class="form-input" value="1" min="1"
-                                            max="10">
+                            <div class="form-group"
+                                style="margin-top: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                                <div>
+                                    <label class="form-label">Slow Mode</label>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                        Speak at a slower pace.
                                     </div>
                                 </div>
-
-                                <!-- Discogs -->
-                                <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
-                                    <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                        <div style="font-weight: 600;">Discogs</div>
-                                        <input type="checkbox" id="meta-discogs-enabled">
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label" style="font-size: 0.8rem;">Priority</label>
-                                        <input type="number" id="meta-discogs-prio" class="form-input" value="2" min="1"
-                                            max="10">
-                                    </div>
+                                <div>
+                                    <input type="checkbox" id="setting-tts-slow" style="transform: scale(1.5);">
                                 </div>
+                            </div>
+                        </div>
 
-                                <!-- MusicBrainz -->
-                                <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
-                                    <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                        <div style="font-weight: 600;">MusicBrainz</div>
-                                        <input type="checkbox" id="meta-mb-enabled">
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label" style="font-size: 0.8rem;">Priority</label>
-                                        <input type="number" id="meta-mb-prio" class="form-input" value="3" min="1"
-                                            max="10">
-                                    </div>
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🎯 Discovery Strategies</h3>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                            Adjust the weights for different recommendation strategies. Total must equal 100.
+                        </div>
+                        <div class="grid" style="grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label">Similar Song (Strategy 1)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-similar" class="form-input weight-input" value="60"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Same Artist (Strategy 2)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-artist" class="form-input weight-input" value="10"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Wildcard (Strategy 3)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-wildcard" class="form-input weight-input" value="30"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Library (Strategy 4)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-library" class="form-input weight-input" value="0"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 0.5rem; font-weight: 500; text-align: right;">
+                            Total: <span id="weights-total">100</span>%
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔍 Metadata Configuration</h3>
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label class="form-label">Resolution Strategy</label>
+                            <select id="meta-strategy" class="form-input" style="max-width: 300px;">
+                                <option value="fallback">Fallback (Priority Order)</option>
+                                <option value="consensus">Consensus (Most Agreed Genre)</option>
+                            </select>
+                        </div>
+
+                        <div class="metadata-grid" style="display: grid; gap: 1rem;">
+                            <!-- Spotify -->
+                            <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 600;">Spotify</div>
+                                    <input type="checkbox" id="meta-spotify-enabled" checked disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+                                    <input type="number" id="meta-spotify-prio" class="form-input" value="1" min="1"
+                                        max="10">
                                 </div>
                             </div>
 
-                            <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-                                <button class="btn btn-primary" onclick="saveServerSettings()">Save Server
-                                    Settings</button>
-                                <button class="btn btn-danger" onclick="leaveServer()"
-                                    style="background-color: var(--warning); border-color: var(--warning); color: #000;">Leave
-                                    Server</button>
+                            <!-- Discogs -->
+                            <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 600;">Discogs</div>
+                                    <input type="checkbox" id="meta-discogs-enabled">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+                                    <input type="number" id="meta-discogs-prio" class="form-input" value="2" min="1"
+                                        max="10">
+                                </div>
                             </div>
+
+                            <!-- MusicBrainz -->
+                            <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 600;">MusicBrainz</div>
+                                    <input type="checkbox" id="meta-mb-enabled">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+                                    <input type="number" id="meta-mb-prio" class="form-input" value="3" min="1"
+                                        max="10">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                            <button class="btn btn-primary" onclick="saveServerSettings()">Save Server
+                                Settings</button>
+                            <button class="btn btn-danger" onclick="leaveServer()"
+                                style="background-color: var(--warning); border-color: var(--warning); color: #000;">Leave
+                                Server</button>
                         </div>
                     </div>
                 </div>
             </div>
+    </div>
 
-            <!-- LOGS TAB -->
-            <div id="tab-logs" class="tab-content" style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title">📜 System Logs</h2>
-                        <div
-                            style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-                            <label for="autoscroll-toggle" style="cursor: pointer;">Autoscroll</label>
-                            <input type="checkbox" id="autoscroll-toggle" checked
-                                style="cursor: pointer; transform: scale(1.2);">
-                        </div>
-                    </div>
-                    <div id="logs" class="logs">
-                        <!-- Logs populated by WS -->
-                    </div>
+    <!-- LOGS TAB -->
+    <div id="tab-logs" class="tab-content" style="display: none;">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📜 System Logs</h2>
+                <div
+                    style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+                    <label for="autoscroll-toggle" style="cursor: pointer;">Autoscroll</label>
+                    <input type="checkbox" id="autoscroll-toggle" checked
+                        style="cursor: pointer; transform: scale(1.2);">
                 </div>
             </div>
-        </main>
+            <div id="logs" class="logs">
+                <!-- Logs populated by WS -->
+            </div>
+        </div>
+    </div>
+    </main>
     </div>
 
     <script src="/static/dashboard.js?v=1.1"></script>

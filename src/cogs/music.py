@@ -1118,13 +1118,17 @@ class MusicCog(commands.Cog):
             import random
             system_prompt = None
             if groq_custom_prompts:
-                system_prompt = random.choice(groq_custom_prompts)
-            
-            # Note: GroqService.generate_script currently uses a hardcoded SYSTEM_PROMPT.
-            # We might need to update GroqService to accept a custom prompt.
-            # For now, let's assume we use the default if no custom ones are selected,
-            # or we could patch the service call if it supported it.
-            # Let's check groq.py again or just pass it if we can.
+                # Handle both old (string) and new (dict) prompt formats
+                enabled_prompts = []
+                for p in groq_custom_prompts:
+                    if isinstance(p, dict):
+                        if p.get("enabled", True):
+                            enabled_prompts.append(p.get("text"))
+                    else:
+                        enabled_prompts.append(p)
+                
+                if enabled_prompts:
+                    system_prompt = random.choice(enabled_prompts)
             
             script_text = await self.groq.generate_script(item.title, item.artist, system_prompt=system_prompt)
             

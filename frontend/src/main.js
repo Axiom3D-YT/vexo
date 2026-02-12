@@ -1291,7 +1291,13 @@ Object.assign(window, {
     viewUser,
     openGlobalSettings,
     initCharts,
-    updateCharts
+    updateCharts,
+    showPresetLoader,
+    closePresetModal,
+    loadPreset,
+    openAutogenerateModal,
+    closeAutogenModal,
+    applyAutogen
 });
 
 // Helper functions for advanced settings
@@ -1317,31 +1323,119 @@ function populateVoiceChannels(selectedId) {
 function renderGroqPrompts(prompts) {
     const list = document.getElementById('groq-prompts-list');
     if (!list) return;
-    if (prompts.length === 0) prompts = [''];
-    list.innerHTML = prompts.map((p, i) => `
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <input type="text" class="form-input groq-prompt-input" value="${p.replace(/"/g, '&quot;')}" placeholder="DJ personality/prompt...">
-            <button class="btn btn-icon btn-sm" onclick="this.parentElement.remove()" style="color: var(--danger);">✕</button>
-        </div>
-    `).join('');
+
+    // Default to one empty enabled prompt if none provided
+    if (prompts.length === 0) prompts = [{ text: '', enabled: true }];
+
+    list.innerHTML = prompts.map((p, i) => {
+        const text = typeof p === 'string' ? p : (p.text || '');
+        const enabled = typeof p === 'string' ? true : (p.enabled !== false);
+
+        return `
+            <div class="groq-prompt-item" style="display: flex; gap: 0.5rem; align-items: start; background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; margin-top: 0.5rem;">
+                    <input type="checkbox" class="groq-prompt-enabled" ${enabled ? 'checked' : ''} style="transform: scale(1.2);">
+                </div>
+                <textarea class="form-input groq-prompt-input" rows="2" style="flex: 1; resize: vertical; min-height: 50px;" placeholder="DJ personality/prompt...">${text.replace(/"/g, '&quot;')}</textarea>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <button class="btn btn-icon btn-sm" onclick="this.closest('.groq-prompt-item').remove()" style="color: var(--danger); font-size: 1rem;">✕</button>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
-function addGroqPrompt() {
+function addGroqPrompt(text = '', enabled = true) {
     const list = document.getElementById('groq-prompts-list');
     if (!list) return;
     const div = document.createElement('div');
-    div.style.cssText = 'display: flex; gap: 0.5rem; align-items: center;';
+    div.className = 'groq-prompt-item';
+    div.style.cssText = 'display: flex; gap: 0.5rem; align-items: start; background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border);';
     div.innerHTML = `
-        <input type="text" class="form-input groq-prompt-input" value="" placeholder="DJ personality/prompt...">
-        <button class="btn btn-icon btn-sm" onclick="this.parentElement.remove()" style="color: var(--danger);">✕</button>
+        <div style="display: flex; align-items: center; margin-top: 0.5rem;">
+            <input type="checkbox" class="groq-prompt-enabled" ${enabled ? 'checked' : ''} style="transform: scale(1.2);">
+        </div>
+        <textarea class="form-input groq-prompt-input" rows="2" style="flex: 1; resize: vertical; min-height: 50px;" placeholder="DJ personality/prompt...">${text.replace(/"/g, '&quot;')}</textarea>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <button class="btn btn-icon btn-sm" onclick="this.closest('.groq-prompt-item').remove()" style="color: var(--danger); font-size: 1rem;">✕</button>
+        </div>
     `;
     list.appendChild(div);
 }
 
 function getGroqPrompts() {
-    return Array.from(document.querySelectorAll('.groq-prompt-input'))
-        .map(input => input.value.trim())
-        .filter(val => val !== '');
+    return Array.from(document.querySelectorAll('.groq-prompt-item'))
+        .map(item => ({
+            text: item.querySelector('.groq-prompt-input').value.trim(),
+            enabled: item.querySelector('.groq-prompt-enabled').checked
+        }))
+        .filter(p => p.text !== '');
+}
+
+// Preset and Autogen controls
+const GROQ_PRESETS = {
+    friend: {
+        text: `ROLE: You are a Cool, Knowledgeable Music Curator. You're not a radio DJ with a "voice"; you're that friend who always knows the perfect song for the moment. Your vibe is authentic, relaxed, and conversational.
+TASK: Write a short, natural intro for the specified track.
+OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
+STRICT GUIDELINES: Natural Flow, Stay relaxed, reveal info naturally, no stage directions.`
+    },
+    critic: {
+        text: `ROLE: You are a sharp, slightly snarky Music Critic. You analyze the production, the era, and the artist's legacy. You're technical but accessible.
+TASK: Write a sharp intro for the specified track.
+OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
+STRICT GUIDELINES: Be analytical, technical details, avoid being overly 'nice', no stage directions.`
+    },
+    hype: {
+        text: `ROLE: You are a high-energy Radio Hype Man. You're all about the energy, the club vibes, and getting the listeners moving.
+TASK: Write an energetic intro for the specified track.
+OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
+STRICT GUIDELINES: High energy, focus on the beat, keep it punchy, no stage directions.`
+    },
+    jazz: {
+        text: `ROLE: You are a smooth, poetic Jazz Cat. Think late-night, smoky lounges, and deep appreciation for the craft.
+TASK: Write a smooth, poetic intro for the specified track.
+OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
+STRICT GUIDELINES: Poetic language, sensory descriptions, relaxed tempo, focus on soul, no stage directions.`
+    },
+    history: {
+        text: `ROLE: You are an Encyclopedia of Music History. You know every sample, every influence, and every recording session detail.
+TASK: Write an educational, trivia-focused intro for the specified track.
+OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
+STRICT GUIDELINES: Trivia based, educational, historical context, professional passion, no stage directions.`
+    },
+    zen: {
+        text: `ROLE: You are a Minimalist Zen Master. You care about the emotion and the present moment. Your words are few but chosen with care.
+TASK: Write a minimalist intro for the specified track.
+OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
+STRICT GUIDELINES: Extremely concise, focus on one feeling, minimal words, no stage directions.`
+    }
+};
+
+function showPresetLoader() { document.getElementById('preset-modal').style.display = 'flex'; }
+function closePresetModal() { document.getElementById('preset-modal').style.display = 'none'; }
+function loadPreset(id) {
+    const preset = GROQ_PRESETS[id];
+    if (preset) {
+        addGroqPrompt(preset.text, true);
+        closePresetModal();
+    }
+}
+
+function openAutogenerateModal() { document.getElementById('autogen-modal').style.display = 'flex'; }
+function closeAutogenModal() { document.getElementById('autogen-modal').style.display = 'none'; }
+function applyAutogen() {
+    const persona = document.getElementById('autogen-persona').value;
+    const vibe = document.getElementById('autogen-vibe').value;
+    const detail = document.getElementById('autogen-detail').value;
+
+    let prompt = `ROLE: You are a ${vibe} ${persona}. You talk to the listeners with a ${vibe} attitude.\n`;
+    prompt += `TASK: Write an intro for the song that is ${detail === 'brief' ? 'very short and punchy' : detail === 'balanced' ? 'engaging and balanced' : 'rich with descriptive details'}.\n`;
+    prompt += `OUTPUT FORMAT: Return a valid JSON object with: "song", "artist", "genre", "release_date", and "text".\n`;
+    prompt += `GUIDELINES: Stay in character as a ${persona}. Focus on the ${vibe} mood. Do NOT include any stage directions or bracketed text.`;
+
+    addGroqPrompt(prompt, true);
+    closeAutogenModal();
 }
 
 async function populateTTSVoices(selectedId) {
