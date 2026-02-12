@@ -20,7 +20,7 @@ const API = {
 
 // Reactive State
 const currentGuild = signal(null);
-const currentScope = { value: 'global' };
+const currentScope = signal('global');
 let voiceChannels = [];
 let ttsVoices = { tiktok_voices: [], gtts_voices: [] };
 const libraryData = signal([]); // Full library cache
@@ -1011,13 +1011,8 @@ async function loadSettingsTab() {
             const elDur = document.getElementById('setting-test-duration');
             if (elDur) elDur.value = data.playback_duration || 30;
 
-            const groqEnabled = data.groq_enabled !== false; // Default true
-            const elGroqOn = document.getElementById('groq-on');
-            const elGroqOff = document.getElementById('groq-off');
-            if (elGroqOn && elGroqOff) {
-                elGroqOn.checked = groqEnabled;
-                elGroqOff.checked = !groqEnabled;
-            }
+            const groqEnabled = data.groq_enabled !== false; // This is now removed from global, but keeping logic for cleanliness or removing if totally unused
+            // We removed the UI for groq in global settings, so we can skip loading it here.
         } catch (e) {
             console.error(e);
         }
@@ -1224,7 +1219,6 @@ async function saveSettingsTab() {
     const maxServers = document.getElementById('setting-max-servers-tab').value;
     const testMode = document.getElementById('setting-test-mode').checked;
     const testDuration = document.getElementById('setting-test-duration').value;
-    const groqEnabled = document.getElementById('groq-on').checked;
 
     try {
         const res = await fetch(API.settings_global, {
@@ -1233,8 +1227,7 @@ async function saveSettingsTab() {
             body: JSON.stringify({
                 max_concurrent_servers: maxServers ? parseInt(maxServers) : null,
                 test_mode: testMode,
-                playback_duration: testDuration ? parseInt(testDuration) : 30,
-                groq_enabled: groqEnabled
+                playback_duration: testDuration ? parseInt(testDuration) : 30
             })
         });
 

@@ -1089,11 +1089,6 @@ class MusicCog(commands.Cog):
                 guild_crud = GuildCRUD(self.bot.db)
                 system_crud = SystemCRUD(self.bot.db)
                 
-                # Check global groq toggle
-                global_groq = await system_crud.get_global_setting("groq_enabled")
-                if global_groq is False:
-                    return
-
                 # Fetch guild-specific settings
                 guild_settings = await guild_crud.get_all_settings(player.guild_id)
                 groq_enabled = guild_settings.get("groq_enabled", True)
