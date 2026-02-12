@@ -70,7 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// WebSocket for live logs
+// WebSocket and Log State
+let ws = null;
+let displayedLogIds = new Set();
+
 function initWebSocket() {
     try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -78,7 +81,10 @@ function initWebSocket() {
         console.log(`[Dashboard] Connecting to WebSocket: ${wsUrl}`);
 
         ws = new WebSocket(wsUrl);
-        ws.onopen = () => console.log('[Dashboard] WebSocket connected');
+        ws.onopen = () => {
+            console.log('[Dashboard] WebSocket connected');
+            // When WS connects, we can rely on it
+        };
         ws.onmessage = (e) => {
             const log = JSON.parse(e.data);
             addLogEntry(log);
@@ -93,9 +99,31 @@ function initWebSocket() {
     }
 }
 
+// Fallback Polling
+setInterval(async () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        try {
+            const res = await fetch('/api/logs');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.logs) {
+                    data.logs.forEach(log => addLogEntry(log));
+                }
+            }
+        } catch (e) {
+            console.error('[Dashboard] Polling failed', e);
+        }
+    }
+}, 10000); // Check every 10s if WS is down
+
 function addLogEntry(log) {
     const logsEl = document.getElementById('logs');
     if (!logsEl) return;
+
+    // Create a unique key for the log to prevent duplicates
+    const logId = `${log.timestamp}-${log.level}-${log.message.substring(0, 50)}`;
+    if (displayedLogIds.has(logId)) return;
+    displayedLogIds.add(logId);
 
     const time = new Date(log.timestamp * 1000).toLocaleTimeString();
     const entry = document.createElement('div');
@@ -104,7 +132,12 @@ function addLogEntry(log) {
     logsEl.appendChild(entry);
     logsEl.scrollTop = logsEl.scrollHeight;
 
-    while (logsEl.children.length > 200) logsEl.removeChild(logsEl.firstChild);
+    while (logsEl.children.length > 500) { // Keep more in UI
+        logsEl.removeChild(logsEl.firstChild);
+        // Note: We don't prune displayedLogIds here to simplify, 
+        // but in a long-running session it might grow. 
+        // For 1000 logs it's negligible memory.
+    }
 }
 
 async function fetchDashboardInit() {

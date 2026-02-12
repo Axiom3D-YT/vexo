@@ -79,7 +79,7 @@ class WebSocketManager:
     
     def __init__(self):
         self.clients: set[web.WebSocketResponse] = set()
-        self.recent_logs: deque = deque(maxlen=100)
+        self.recent_logs: deque = deque(maxlen=1000)
     
     def record_locally(self, message: dict):
         """Add to the history buffer for new connections."""
@@ -168,12 +168,14 @@ class DashboardCog(commands.Cog):
         self.app.router.add_get("/api/guilds/{guild_id}/settings", self._handle_guild_settings)
         self.app.router.add_post("/api/guilds/{guild_id}/settings", self._handle_update_settings)
         self.app.router.add_post("/api/guilds/{guild_id}/control/{action}", self._handle_control)
+        self.app.router.add_get("/api/dashboard-init", self._api_dashboard_init)
+        self.app.router.add_get("/api/logs", self._api_get_logs)
+        self.app.router.add_get("/ws/logs", self._handle_websocket)
         self.app.router.add_get("/api/analytics", self._handle_analytics)
         self.app.router.add_get("/api/songs", self._handle_songs)
         self.app.router.add_get("/api/library", self._handle_library)
         self.app.router.add_get("/api/users", self._handle_users)
         self.app.router.add_get("/api/users/{user_id}/preferences", self._handle_user_prefs)
-        self.app.router.add_get("/ws/logs", self._handle_websocket)
         
         # Global & System
         self.app.router.add_get("/api/settings/global", self._handle_global_settings)
@@ -635,6 +637,10 @@ class DashboardCog(commands.Cog):
         prefs = await crud.get_all_preferences(user_id)
         return web.json_response(prefs)
     
+    async def _api_get_logs(self, request: web.Request) -> web.Response:
+        """Endpoint to fetch the latest logs for fallback polling."""
+        return web.json_response({"logs": list(self.ws_manager.recent_logs)})
+
     async def _handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
