@@ -273,12 +273,15 @@ class DashboardCog(commands.Cog):
                  total_seconds += player.current.duration_seconds
             queue_duration_mins = round(total_seconds / 60, 1)
 
+        voice_channels = [{"id": str(ch.id), "name": ch.name} for ch in guild.voice_channels]
+
         return web.json_response({
             "id": str(guild.id),
             "name": guild.name,
             "member_count": guild.member_count,
             "queue_size": queue_size,
-            "queue_duration": queue_duration_mins
+            "queue_duration": queue_duration_mins,
+            "voice_channels": voice_channels
         })
     
     async def _handle_guild_settings(self, request: web.Request) -> web.Response:

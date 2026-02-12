@@ -36,7 +36,7 @@ Vocal Cues: Do NOT include any stage directions or bracketed text."""
         if not self.api_key:
             logger.warning("GROQ_API_KEY not found in environment variables. Groq service will be disabled.")
             
-    async def generate_script(self, song: str, artist: str) -> str | None:
+    async def generate_script(self, song: str, artist: str, system_prompt: str | None = None) -> str | None:
         """
         Generate a DJ script for the given song and artist using Groq API.
         Returns the script text or None if generation fails.
@@ -54,10 +54,12 @@ Artist: {artist}
 Max Word Count: 25
 Output Requirement: JSON object valid string."""
 
+        prompt = system_prompt or self.SYSTEM_PROMPT
+
         payload = {
             "model": "groq/compound-mini",
             "messages": [
-                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "system", "content": prompt},
                 {"role": "user",   "content": user_content}
             ],
             "temperature": 0.7,

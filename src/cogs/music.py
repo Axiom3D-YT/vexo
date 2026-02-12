@@ -15,6 +15,7 @@ from src.services.youtube import YouTubeService, YTTrack
 from src.services.discogs import DiscogsService
 from src.services.musicbrainz import MusicBrainzService
 from src.services.groq import GroqService
+from src.services.tts import VexoTTSService
 from src.database.crud import SongCRUD, UserCRUD, PlaybackCRUD, ReactionCRUD, GuildCRUD, AnalyticsCRUD
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,7 @@ class MusicCog(commands.Cog):
         self.discogs = DiscogsService()
         self.musicbrainz = MusicBrainzService()
         self.groq = GroqService()
+        self.tts = VexoTTSService()
         
         # FFMPEG Options
         self.FFMPEG_OPTIONS = {
@@ -211,16 +213,20 @@ class MusicCog(commands.Cog):
             "options": "-vn",
         }
         self._idle_check_task: asyncio.Task | None = None
+        self._auto_connect_task: asyncio.Task | None = None
     
     async def cog_load(self):
         """Called when the cog is loaded."""
         self._idle_check_task = asyncio.create_task(self._idle_check_loop())
+        self._auto_connect_task = asyncio.create_task(self._auto_connect_loop())
         logger.info("Music cog loaded")
     
     async def cog_unload(self):
         """Called when the cog is unloaded."""
         if self._idle_check_task:
             self._idle_check_task.cancel()
+        if self._auto_connect_task:
+            self._auto_connect_task.cancel()
         
         # Disconnect from all voice channels
         for player in list(self.players.values()):
@@ -1067,46 +1073,103 @@ class MusicCog(commands.Cog):
         channel = self.bot.get_channel(player.text_channel_id)
         if not channel:
             return
-            
-        # 2. Check if Groq is enabled globally
+
+        # 2. Fetch Guild Settings for Groq and TTS
+        groq_enabled = True
+        groq_send_text = True
+        groq_offset = 0
+        groq_custom_prompts = []
+        tts_enabled = False
+        tts_voice = "en_us_001"
+        tts_slow = False
+
         if hasattr(self.bot, "db") and self.bot.db:
             try:
-                from src.database.crud import SystemCRUD
+                from src.database.crud import GuildCRUD, SystemCRUD
+                guild_crud = GuildCRUD(self.bot.db)
                 system_crud = SystemCRUD(self.bot.db)
-                groq_enabled = await system_crud.get_global_setting("groq_enabled")
-                if groq_enabled is False: # Explicitly False (default True)
+                
+                # Check global groq toggle
+                global_groq = await system_crud.get_global_setting("groq_enabled")
+                if global_groq is False:
+                    return
+
+                # Fetch guild-specific settings
+                guild_settings = await guild_crud.get_all_settings(player.guild_id)
+                groq_enabled = guild_settings.get("groq_enabled", True)
+                groq_send_text = guild_settings.get("groq_send_text", True)
+                groq_offset = int(guild_settings.get("groq_offset", 0))
+                groq_custom_prompts = guild_settings.get("groq_custom_prompts", [])
+                
+                tts_enabled = guild_settings.get("tts_enabled", False)
+                tts_voice = guild_settings.get("tts_voice", "en_us_001")
+                tts_slow = guild_settings.get("tts_slow", False)
+                
+                if not groq_enabled and not tts_enabled:
                     return
             except Exception as e:
-                logger.error(f"Failed to check groq_enabled setting: {e}")
+                logger.error(f"Failed to fetch Groq/TTS settings: {e}")
 
-        # 3. Generate Script (Non-blocking)
+        # 3. Apply Timing Offset
+        if groq_offset > 0:
+            await asyncio.sleep(groq_offset)
+        elif groq_offset < 0:
+            # For negative offset, we can't really go back in time, 
+            # but usually this is used to start early if possible.
+            # In this implementation, we just proceed immediately for negative.
+            pass
+
+        # 4. Generate Script (Non-blocking)
         try:
-            script_text = await self.groq.generate_script(item.title, item.artist)
+            # Determine which system prompt to use
+            import random
+            system_prompt = None
+            if groq_custom_prompts:
+                system_prompt = random.choice(groq_custom_prompts)
+            
+            # Note: GroqService.generate_script currently uses a hardcoded SYSTEM_PROMPT.
+            # We might need to update GroqService to accept a custom prompt.
+            # For now, let's assume we use the default if no custom ones are selected,
+            # or we could patch the service call if it supported it.
+            # Let's check groq.py again or just pass it if we can.
+            
+            script_text = await self.groq.generate_script(item.title, item.artist, system_prompt=system_prompt)
             
             if not script_text:
                 return
                 
-            # 3. Format Content
-            content = f"```\n{script_text}\n```"
-            
-            # 4. Edit or Send
-            msg_sent = False
-            if player.last_script_msg:
-                try:
-                    await player.last_script_msg.edit(content=content)
-                    msg_sent = True
-                except (discord.NotFound, discord.Forbidden):
-                    # Message deleted or perms lost, fall through to send new one
-                    player.last_script_msg = None
-                except Exception as e:
-                    logger.warning(f"Failed to edit DJ script message: {e}")
-            
-            if not msg_sent:
-                try:
-                    player.last_script_msg = await channel.send(content)
-                except Exception as e:
-                    logger.error(f"Failed to send DJ script message: {e}")
-                    
+            # 5. TTS Output
+            if tts_enabled:
+                # We need a voice channel to speak in
+                if player.voice_client and player.voice_client.channel:
+                    await self.tts.speak(
+                        guild_id=player.guild_id,
+                        channel_id=player.voice_client.channel.id,
+                        message=script_text,
+                        voice=tts_voice,
+                        slow=tts_slow
+                    )
+
+            # 6. Text Output
+            if groq_send_text:
+                content = f"```\n{script_text}\n```"
+                
+                msg_sent = False
+                if player.last_script_msg:
+                    try:
+                        await player.last_script_msg.edit(content=content)
+                        msg_sent = True
+                    except (discord.NotFound, discord.Forbidden):
+                        player.last_script_msg = None
+                    except Exception as e:
+                        logger.warning(f"Failed to edit DJ script message: {e}")
+                
+                if not msg_sent:
+                    try:
+                        player.last_script_msg = await channel.send(content)
+                    except Exception as e:
+                        logger.error(f"Failed to send DJ script message: {e}")
+                        
         except Exception as e:
             logger.error(f"Error in DJ script flow: {e}")
 
@@ -1521,6 +1584,29 @@ class MusicCog(commands.Cog):
                     # Check if idle for too long
                     if not player.is_playing and (now - player.last_activity).seconds > self.IDLE_TIMEOUT:
                         logger.info(f"Disconnecting from {guild_id} due to inactivity")
+                        
+                        # Check 24/7 mode before disconnecting for inactivity
+                        is_247 = False
+                        if hasattr(self.bot, "db") and self.bot.db:
+                            try:
+                                from src.database.crud import GuildCRUD
+                                guild_crud = GuildCRUD(self.bot.db)
+                                is_247 = await guild_crud.get_setting(guild_id, "twenty_four_seven")
+                            except: pass
+                        
+                        if is_247:
+                            # In 24/7 mode, we still "end session" if it was discovery and we want a break, 
+                            # but we don't disconnect.
+                            # However, 24/7 mode usually implies we KEEP PLAYING.
+                            # If autoplay is on, it shouldn't even reach idle.
+                            # If it reached idle, it means autoplay is off.
+                            if player.autoplay:
+                                player.last_activity = datetime.now(UTC)
+                                continue
+                            
+                            logger.info(f"Bot is idle in {guild_id}, but 24/7 mode is active. Staying connected.")
+                            continue
+
                         await self._end_session(player)
                         await player.voice_client.disconnect()
                         player.voice_client = None
@@ -1565,6 +1651,19 @@ class MusicCog(commands.Cog):
         if player.voice_client and player.voice_client.channel:
             members = [m for m in player.voice_client.channel.members if not m.bot]
             if not members:
+                # Check for 24/7 mode
+                is_247 = False
+                if hasattr(self.bot, "db") and self.bot.db:
+                    try:
+                        from src.database.crud import GuildCRUD
+                        guild_crud = GuildCRUD(self.bot.db)
+                        is_247 = await guild_crud.get_setting(member.guild.id, "twenty_four_seven")
+                    except: pass
+                
+                if is_247:
+                    logger.info(f"Everyone left {member.guild.name}, but 24/7 mode is ON. Staying.")
+                    return
+
                 # Everyone left, stop and disconnect
                 if player.voice_client.is_playing():
                     player.voice_client.stop()
@@ -1573,6 +1672,48 @@ class MusicCog(commands.Cog):
                 await player.voice_client.disconnect()
                 player.voice_client = None
                 logger.info(f"Disconnected from {member.guild.name} - everyone left")
+
+    async def _auto_connect_loop(self):
+        """Check and handle AutoConnect settings for guilds."""
+        while True:
+            await asyncio.sleep(60) # Check every minute
+            
+            if not hasattr(self.bot, "db") or not self.bot.db:
+                continue
+
+            try:
+                from src.database.crud import GuildCRUD
+                guild_crud = GuildCRUD(self.bot.db)
+
+                # Fetch all guilds the bot is in
+                for guild in self.bot.guilds:
+                    # Check if bot is already in a voice channel in this guild
+                    if guild.voice_client:
+                        continue
+
+                    # Check settings
+                    settings = await guild_crud.get_all_settings(guild.id)
+                    auto_connect = settings.get("auto_connect", False)
+                    auto_channel_id = settings.get("auto_connect_channel")
+
+                    if auto_connect and auto_channel_id:
+                        channel = guild.get_channel(int(auto_channel_id))
+                        if channel and isinstance(channel, discord.VoiceChannel):
+                            logger.info(f"AutoConnect: Joining channel {channel.name} in {guild.name}")
+                            player = self.get_player(guild.id)
+                            try:
+                                player.voice_client = await channel.connect(self_deaf=True, timeout=20.0)
+                                player.autoplay = True
+                                player.text_channel_id = channel.id # Initial text channel can be same as voice or a dedicated one
+                                
+                                if not player.is_playing:
+                                    player.is_playing = True
+                                    asyncio.create_task(self._play_loop(player))
+                            except Exception as e:
+                                logger.error(f"AutoConnect failed in {guild.name}: {e}")
+
+            except Exception as e:
+                logger.error(f"Error in AutoConnect loop: {e}")
 
     async def _resolve_metadata(self, item: QueueItem, config: dict | None):
         """

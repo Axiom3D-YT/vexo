@@ -400,164 +400,218 @@
                             </div>
                         </div>
 
-                        <!-- SERVER SETTINGS -->
-                        <div id="settings-server" style="display: none;">
-                            <div class="form-group"
-                                style="display: flex; align-items: center; justify-content: space-between;">
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🕒 Playback & Connectivity</h3>
+                        <div class="form-group"
+                            style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <label class="form-label">24/7 Mode</label>
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                    Keep the bot in the voice channel even when everyone leaves.
+                                </div>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="setting-247" style="transform: scale(1.5);">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
                                 <div>
-                                    <label class="form-label">Pre-Buffering</label>
+                                    <label class="form-label">Auto-Connect</label>
                                     <div style="font-size: 0.8rem; color: var(--text-muted);">
-                                        Pre-load the next song for gapless playback.
+                                        Automatically join a specific channel on startup or when idle.
                                     </div>
                                 </div>
                                 <div>
-                                    <input type="checkbox" id="setting-pre-buffer" style="transform: scale(1.5);">
+                                    <input type="checkbox" id="setting-autoconnect" style="transform: scale(1.5);">
+                                </div>
+                            </div>
+                            <div id="autoconnect-options"
+                                style="margin-top: 1rem; padding-left: 1rem; border-left: 2px solid var(--border); display: none;">
+                                <label class="form-label" style="font-size: 0.8rem;">Target Voice Channel</label>
+                                <select id="setting-autoconnect-channel" class="form-input">
+                                    <!-- Populated by JS -->
+                                    <option value="">Select a channel...</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🤖 Groq DJ Enhancements</h3>
+                        <div class="form-group"
+                            style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <label class="form-label">Enable Groq Integration</label>
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                    Generate dynamic DJ scripts for this server.
+                                </div>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="setting-groq-enabled" style="transform: scale(1.5);">
+                            </div>
+                        </div>
+
+                        <div id="groq-advanced-options" style="display: none;">
+                            <div class="form-group"
+                                style="margin-top: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                                <div>
+                                    <label class="form-label">Send Text Messages</label>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                        Post the DJ scripts as text in the channel.
+                                    </div>
+                                </div>
+                                <div>
+                                    <input type="checkbox" id="setting-groq-text" style="transform: scale(1.5);">
                                 </div>
                             </div>
 
                             <div class="form-group" style="margin-top: 1.5rem;">
-                                <label class="form-label">Buffer Amount (Songs)</label>
-                                <div style="display: flex; align-items: center; gap: 1rem;">
-                                    <input type="range" id="setting-buffer-amount" min="1" max="10" value="1"
-                                        style="width: 100%;"
-                                        oninput="document.getElementById('buffer-val').textContent = this.value">
-                                    <span id="buffer-val" style="font-weight: 600; min-width: 30px;">1</span>
-                                </div>
+                                <label class="form-label">Timing Offset (Seconds)</label>
+                                <input type="number" id="setting-groq-offset" class="form-input"
+                                    placeholder="e.g. 5 or -5" style="max-width: 150px;">
                                 <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                                    Number of upcoming songs to keep ready in memory.
+                                    Delay script generation. Positive = later, Negative = as early as possible.
                                 </div>
                             </div>
 
                             <div class="form-group" style="margin-top: 1.5rem;">
-                                <label class="form-label">Max Song Duration (Minutes)</label>
-                                <input type="number" id="setting-max-duration" class="form-input"
-                                    placeholder="Default: 6" min="1" max="60" style="max-width: 300px;">
+                                <label class="form-label">Custom Prompts</label>
+                                <div id="groq-prompts-list"
+                                    style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                    <!-- Dynamic inputs -->
+                                </div>
+                                <button class="btn btn-secondary btn-sm" onclick="addGroqPrompt()">+ Add Prompt</button>
                                 <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                                    Skip songs longer than this limit (0 for unlimited).
+                                    A prompt will be randomly selected for each song.
                                 </div>
                             </div>
+                        </div>
 
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔊 VexoTTS Settings</h3>
+                        <div class="form-group"
+                            style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <label class="form-label">Enable TTS</label>
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                    Play the DJ script via voice in the channel.
+                                </div>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="setting-tts-enabled" style="transform: scale(1.5);">
+                            </div>
+                        </div>
+
+                        <div id="tts-options" style="display: none;">
                             <div class="form-group" style="margin-top: 1.5rem;">
-                                <label class="form-label">Auto-Delete Duration (Seconds)</label>
-                                <input type="number" id="setting-ephemeral-duration" class="form-input"
-                                    placeholder="Default: 10" min="5" max="60" style="max-width: 300px;">
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                                    How long confirmation messages (skip, pause, etc.) stay visible.
-                                </div>
-                            </div>
-
-                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
-
-                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">🎲 Discovery Strategies (Total: <span
-                                    id="weights-total">100</span>%)</h3>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                                <div class="form-group">
-                                    <label class="form-label">Similar Songs</label>
-                                    <input type="number" id="weight-similar" class="form-input" value="25" min="0"
-                                        max="100" oninput="validateWeights()">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Same Artist</label>
-                                    <input type="number" id="weight-artist" class="form-input" value="25" min="0"
-                                        max="100" oninput="validateWeights()">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Wildcard (Charts)</label>
-                                    <input type="number" id="weight-wildcard" class="form-input" value="25" min="0"
-                                        max="100" oninput="validateWeights()">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">My Library</label>
-                                    <input type="number" id="weight-library" class="form-input" value="25" min="0"
-                                        max="100" oninput="validateWeights()">
-                                </div>
-                            </div>
-
-                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
-
-                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔍 Metadata Configuration</h3>
-                            <div class="form-group" style="margin-bottom: 1.5rem;">
-                                <label class="form-label">Resolution Strategy</label>
-                                <select id="meta-strategy" class="form-input" style="max-width: 300px;">
-                                    <option value="fallback">Fallback (Priority Order)</option>
-                                    <option value="consensus">Consensus (Most Agreed Genre)</option>
+                                <label class="form-label">Voice Selection</label>
+                                <select id="setting-tts-voice" class="form-input">
+                                    <optgroup label="TikTok Voices" id="tts-voices-tiktok"></optgroup>
+                                    <optgroup label="Google Voices" id="tts-voices-gtts"></optgroup>
                                 </select>
                             </div>
 
-                            <div class="metadata-grid" style="display: grid; gap: 1rem;">
-                                <!-- Spotify -->
-                                <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
-                                    <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                        <div style="font-weight: 600;">Spotify</div>
-                                        <input type="checkbox" id="meta-spotify-enabled" checked disabled>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label" style="font-size: 0.8rem;">Priority</label>
-                                        <input type="number" id="meta-spotify-prio" class="form-input" value="1" min="1"
-                                            max="10">
+                            <div class="form-group"
+                                style="margin-top: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                                <div>
+                                    <label class="form-label">Slow Mode</label>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                        Speak at a slower pace.
                                     </div>
                                 </div>
-
-                                <!-- Discogs -->
-                                <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
-                                    <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                        <div style="font-weight: 600;">Discogs</div>
-                                        <input type="checkbox" id="meta-discogs-enabled">
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label" style="font-size: 0.8rem;">Priority</label>
-                                        <input type="number" id="meta-discogs-prio" class="form-input" value="2" min="1"
-                                            max="10">
-                                    </div>
+                                <div>
+                                    <input type="checkbox" id="setting-tts-slow" style="transform: scale(1.5);">
                                 </div>
+                            </div>
+                        </div>
 
-                                <!-- MusicBrainz -->
-                                <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
-                                    <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                        <div style="font-weight: 600;">MusicBrainz</div>
-                                        <input type="checkbox" id="meta-mb-enabled">
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label" style="font-size: 0.8rem;">Priority</label>
-                                        <input type="number" id="meta-mb-prio" class="form-input" value="3" min="1"
-                                            max="10">
-                                    </div>
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🔍 Metadata Configuration</h3>
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label class="form-label">Resolution Strategy</label>
+                            <select id="meta-strategy" class="form-input" style="max-width: 300px;">
+                                <option value="fallback">Fallback (Priority Order)</option>
+                                <option value="consensus">Consensus (Most Agreed Genre)</option>
+                            </select>
+                        </div>
+
+                        <div class="metadata-grid" style="display: grid; gap: 1rem;">
+                            <!-- Spotify -->
+                            <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 600;">Spotify</div>
+                                    <input type="checkbox" id="meta-spotify-enabled" checked disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+                                    <input type="number" id="meta-spotify-prio" class="form-input" value="1" min="1"
+                                        max="10">
                                 </div>
                             </div>
 
-                            <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-                                <button class="btn btn-primary" onclick="saveServerSettings()">Save Server
-                                    Settings</button>
-                                <button class="btn btn-danger" onclick="leaveServer()"
-                                    style="background-color: var(--warning); border-color: var(--warning); color: #000;">Leave
-                                    Server</button>
+                            <!-- Discogs -->
+                            <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 600;">Discogs</div>
+                                    <input type="checkbox" id="meta-discogs-enabled">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+                                    <input type="number" id="meta-discogs-prio" class="form-input" value="2" min="1"
+                                        max="10">
+                                </div>
                             </div>
+
+                            <!-- MusicBrainz -->
+                            <div class="card" style="padding: 1rem; border: 1px solid var(--border);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 600;">MusicBrainz</div>
+                                    <input type="checkbox" id="meta-mb-enabled">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Priority</label>
+                                    <input type="number" id="meta-mb-prio" class="form-input" value="3" min="1"
+                                        max="10">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                            <button class="btn btn-primary" onclick="saveServerSettings()">Save Server
+                                Settings</button>
+                            <button class="btn btn-danger" onclick="leaveServer()"
+                                style="background-color: var(--warning); border-color: var(--warning); color: #000;">Leave
+                                Server</button>
                         </div>
                     </div>
                 </div>
             </div>
+    </div>
 
-            <!-- LOGS TAB -->
-            <div id="tab-logs" class="tab-content" style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title">📜 System Logs</h2>
-                        <div
-                            style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-                            <label for="autoscroll-toggle" style="cursor: pointer;">Autoscroll</label>
-                            <input type="checkbox" id="autoscroll-toggle" checked
-                                style="cursor: pointer; transform: scale(1.2);">
-                        </div>
-                    </div>
-                    <div id="logs" class="logs">
-                        <!-- Logs populated by WS -->
-                    </div>
+    <!-- LOGS TAB -->
+    <div id="tab-logs" class="tab-content" style="display: none;">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📜 System Logs</h2>
+                <div
+                    style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+                    <label for="autoscroll-toggle" style="cursor: pointer;">Autoscroll</label>
+                    <input type="checkbox" id="autoscroll-toggle" checked
+                        style="cursor: pointer; transform: scale(1.2);">
                 </div>
             </div>
-        </main>
+            <div id="logs" class="logs">
+                <!-- Logs populated by WS -->
+            </div>
+        </div>
+    </div>
+    </main>
     </div>
 
     <script src="/static/dashboard.js?v=1.1"></script>

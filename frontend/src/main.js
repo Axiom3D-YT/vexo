@@ -20,7 +20,9 @@ const API = {
 
 // Reactive State
 const currentGuild = signal(null);
-const currentScope = signal('global');
+const currentScope = { value: 'global' };
+let voiceChannels = [];
+let ttsVoices = { tiktok_voices: [], gtts_voices: [] };
 const libraryData = signal([]); // Full library cache
 const libraryPage = signal(1);
 const LIBRARY_PAGE_SIZE = 50;
@@ -1039,6 +1041,45 @@ async function loadSettingsTab() {
                 if (val) val.textContent = ba.value;
             }
 
+            // New Playback & Connectivity
+            const s247 = document.getElementById('setting-247');
+            if (s247) s247.checked = !!data.twenty_four_seven;
+
+            const sAuto = document.getElementById('setting-autoconnect');
+            if (sAuto) sAuto.checked = !!data.auto_connect;
+            toggleVisible('autoconnect-options', sAuto?.checked);
+
+            // Fetch guild details for voice channels
+            try {
+                const gRes = await fetch(API.guild(currentScope.value)); // Changed from API.guild_detail
+                const gData = await gRes.json();
+                voiceChannels = gData.voice_channels || [];
+                populateVoiceChannels(data.auto_connect_channel);
+            } catch (e) { console.error('Failed to fetch voice channels', e); }
+
+            // Groq Advanced
+            const sGroqE = document.getElementById('setting-groq-enabled');
+            if (sGroqE) sGroqE.checked = data.groq_enabled !== false;
+            toggleVisible('groq-advanced-options', sGroqE?.checked);
+
+            const sGroqT = document.getElementById('setting-groq-text');
+            if (sGroqT) sGroqT.checked = data.groq_send_text !== false;
+
+            const sGroqO = document.getElementById('setting-groq-offset');
+            if (sGroqO) sGroqO.value = data.groq_offset || 0;
+
+            renderGroqPrompts(data.groq_custom_prompts || []);
+
+            // TTS Settings
+            const sTtsE = document.getElementById('setting-tts-enabled');
+            if (sTtsE) sTtsE.checked = !!data.tts_enabled;
+            toggleVisible('tts-options', sTtsE?.checked);
+
+            const sTtsS = document.getElementById('setting-tts-slow');
+            if (sTtsS) sTtsS.checked = !!data.tts_slow;
+
+            populateTTSVoices(data.tts_voice);
+
             const md = document.getElementById('setting-max-duration');
             if (md) md.value = data.max_song_duration || 6;
 
@@ -1124,36 +1165,42 @@ function toggleNotifications() {
 }
 
 async function saveServerSettings() {
-    // FIX: Use currentScope.value instead of currentGuild to match what is being viewed
     if (!currentScope.value || currentScope.value === 'global') return;
     const targetGuild = currentScope.value;
 
-    const preBuffer = document.getElementById('setting-pre-buffer').checked;
-    const bufferAmount = document.getElementById('setting-buffer-amount').value;
-    const maxDuration = document.getElementById('setting-max-duration').value;
-    const ephemeralDuration = document.getElementById('setting-ephemeral-duration').value;
-
-    const weights = {
-        similar: parseInt(document.getElementById('weight-similar').value) || 0,
-        artist: parseInt(document.getElementById('weight-artist').value) || 0,
-        wildcard: parseInt(document.getElementById('weight-wildcard').value) || 0,
-        library: parseInt(document.getElementById('weight-library').value) || 0
-    };
-
-    const metadataConfig = {
-        strategy: document.getElementById('meta-strategy').value,
-        engines: {
-            spotify: {
-                enabled: true,
-                priority: parseInt(document.getElementById('meta-spotify-prio').value) || 1
-            },
-            discogs: {
-                enabled: document.getElementById('meta-discogs-enabled').checked,
-                priority: parseInt(document.getElementById('meta-discogs-prio').value) || 2
-            },
-            musicbrainz: {
-                enabled: document.getElementById('meta-mb-enabled').checked,
-                priority: parseInt(document.getElementById('meta-mb-prio').value) || 3
+    const body = {
+        pre_buffer: document.getElementById('setting-pre-buffer').checked,
+        buffer_amount: parseInt(document.getElementById('setting-buffer-amount').value),
+        max_song_duration: parseInt(document.getElementById('setting-max-duration').value) || 6,
+        ephemeral_duration: parseInt(document.getElementById('setting-ephemeral-duration').value) || 10,
+        twenty_four_seven: document.getElementById('setting-247').checked,
+        auto_connect: document.getElementById('setting-autoconnect').checked,
+        auto_connect_channel: document.getElementById('setting-autoconnect-channel').value,
+        groq_enabled: document.getElementById('setting-groq-enabled').checked,
+        groq_send_text: document.getElementById('setting-groq-text').checked,
+        groq_offset: parseInt(document.getElementById('setting-groq-offset').value || 0),
+        groq_custom_prompts: getGroqPrompts(),
+        tts_enabled: document.getElementById('setting-tts-enabled').checked,
+        tts_voice: document.getElementById('setting-tts-voice').value,
+        tts_slow: document.getElementById('setting-tts-slow').checked,
+        discovery_weights: {
+            similar: parseInt(document.getElementById('weight-similar').value) || 0,
+            artist: parseInt(document.getElementById('weight-artist').value) || 0,
+            wildcard: parseInt(document.getElementById('weight-wildcard').value) || 0,
+            library: parseInt(document.getElementById('weight-library').value) || 0
+        },
+        metadata_config: {
+            strategy: document.getElementById('meta-strategy').value,
+            engines: {
+                spotify: { enabled: true, priority: parseInt(document.getElementById('meta-spotify-prio').value) || 1 },
+                discogs: {
+                    enabled: document.getElementById('meta-discogs-enabled').checked,
+                    priority: parseInt(document.getElementById('meta-discogs-prio').value) || 2
+                },
+                musicbrainz: {
+                    enabled: document.getElementById('meta-mb-enabled').checked,
+                    priority: parseInt(document.getElementById('meta-mb-prio').value) || 3
+                }
             }
         }
     };
@@ -1162,14 +1209,7 @@ async function saveServerSettings() {
         const res = await fetch(API.settings(targetGuild), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                pre_buffer: preBuffer,
-                buffer_amount: parseInt(bufferAmount),
-                max_song_duration: parseInt(maxDuration),
-                ephemeral_duration: parseInt(ephemeralDuration),
-                discovery_weights: weights,
-                metadata_config: metadataConfig
-            })
+            body: JSON.stringify(body)
         });
 
         if (res.ok) alert('Settings saved!');
@@ -1261,3 +1301,88 @@ Object.assign(window, {
     updateCharts
 });
 
+// Helper functions for advanced settings
+function toggleVisible(id, show) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? 'block' : 'none';
+}
+
+// Add listeners for dynamic UI
+document.addEventListener('change', (e) => {
+    if (e.target.id === 'setting-autoconnect') toggleVisible('autoconnect-options', e.target.checked);
+    if (e.target.id === 'setting-groq-enabled') toggleVisible('groq-advanced-options', e.target.checked);
+    if (e.target.id === 'setting-tts-enabled') toggleVisible('tts-options', e.target.checked);
+});
+
+function populateVoiceChannels(selectedId) {
+    const select = document.getElementById('setting-autoconnect-channel');
+    if (!select) return;
+    select.innerHTML = '<option value="">Select a channel...</option>' +
+        voiceChannels.map(ch => `<option value="${ch.id}" ${ch.id === String(selectedId) ? 'selected' : ''}>${ch.name}</option>`).join('');
+}
+
+function renderGroqPrompts(prompts) {
+    const list = document.getElementById('groq-prompts-list');
+    if (!list) return;
+    if (prompts.length === 0) prompts = [''];
+    list.innerHTML = prompts.map((p, i) => `
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="text" class="form-input groq-prompt-input" value="${p.replace(/"/g, '&quot;')}" placeholder="DJ personality/prompt...">
+            <button class="btn btn-icon btn-sm" onclick="this.parentElement.remove()" style="color: var(--danger);">✕</button>
+        </div>
+    `).join('');
+}
+
+function addGroqPrompt() {
+    const list = document.getElementById('groq-prompts-list');
+    if (!list) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'display: flex; gap: 0.5rem; align-items: center;';
+    div.innerHTML = `
+        <input type="text" class="form-input groq-prompt-input" value="" placeholder="DJ personality/prompt...">
+        <button class="btn btn-icon btn-sm" onclick="this.parentElement.remove()" style="color: var(--danger);">✕</button>
+    `;
+    list.appendChild(div);
+}
+
+function getGroqPrompts() {
+    return Array.from(document.querySelectorAll('.groq-prompt-input'))
+        .map(input => input.value.trim())
+        .filter(val => val !== '');
+}
+
+async function populateTTSVoices(selectedId) {
+    // If not fetched yet, simulate or fetch (for now we use hardcoded from plan if API doesn't exist)
+    const tiktok = document.getElementById('tts-voices-tiktok');
+    const gtts = document.getElementById('tts-voices-gtts');
+
+    // We could use the hardcoded list from VexoTTSService description
+    const voices = {
+        tiktok_voices: [
+            { "id": "en_us_ghostface", "name": "Ghost Face" },
+            { "id": "en_us_c3po", "name": "C3PO" },
+            { "id": "en_us_stitch", "name": "Stitch" },
+            { "id": "en_us_stormtrooper", "name": "Stormtrooper" },
+            { "id": "en_us_rocket", "name": "Rocket" },
+            { "id": "en_female_madam_leota", "name": "Madame Leota" },
+            { "id": "en_male_ghosthost", "name": "Ghost Host" },
+            { "id": "en_male_pirate", "name": "Pirate" },
+            { "id": "en_us_001", "name": "English US (Default)" },
+            { "id": "en_us_002", "name": "Jessie" },
+            { "id": "en_us_006", "name": "Joey" },
+            { "id": "en_us_007", "name": "Professor" },
+            { "id": "en_us_009", "name": "Scientist" },
+            { "id": "en_us_010", "name": "Confidence" }
+        ],
+        gtts_voices: [
+            { "id": "en", "name": "English (gTTS)" },
+            { "id": "it", "name": "Italian (gTTS)" },
+            { "id": "fr", "name": "French (gTTS)" }
+        ]
+    };
+
+    if (tiktok) tiktok.innerHTML = voices.tiktok_voices.map(v => `<option value="${v.id}" ${v.id === selectedId ? 'selected' : ''}>${v.name}</option>`).join('');
+    if (gtts) gtts.innerHTML = voices.gtts_voices.map(v => `<option value="${v.id}" ${v.id === selectedId ? 'selected' : ''}>${v.name}</option>`).join('');
+}
+
+window.addGroqPrompt = addGroqPrompt;
