@@ -137,7 +137,9 @@ function addLogEntry(log) {
     if (!logsEl) return;
 
     // Smart autoscroll: Check if user is near the bottom
-    const isAtBottom = logsEl.scrollHeight - logsEl.scrollTop <= logsEl.clientHeight + 50;
+    // We use a larger threshold (100px) for better UX on high-density logs
+    const isAtBottom = logsEl.scrollHeight - logsEl.scrollTop <= logsEl.clientHeight + 100;
+    const isEmpty = logsEl.children.length === 0;
 
     // Create a unique key for the log to prevent duplicates
     const logId = `${log.timestamp}-${log.level}-${log.message.substring(0, 50)}`;
@@ -150,8 +152,8 @@ function addLogEntry(log) {
     entry.innerHTML = `<span class="log-time">${time}</span> [${log.level}] ${log.message}`;
     logsEl.appendChild(entry);
 
-    // Only scroll if enabled AND user is already at the bottom
-    if (autoscrollEnabled && isAtBottom) {
+    // Scroll if enabled AND (user is already at bottom OR it's the first log)
+    if (autoscrollEnabled && (isAtBottom || isEmpty)) {
         logsEl.scrollTop = logsEl.scrollHeight;
     }
 
