@@ -127,10 +127,14 @@ class SpotifyService:
                 None,
                 partial(self.sp.artist, artist_id)
             )
+            genres = artist.get("genres", [])
+            if genres:
+                logger.info(f"Spotify found genres for '{artist['name']}': {genres}")
+
             return SpotifyArtist(
                 artist_id=artist["id"],
                 name=artist["name"],
-                genres=artist.get("genres", []),
+                genres=genres,
                 popularity=artist.get("popularity", 0),
             )
         except Exception as e:

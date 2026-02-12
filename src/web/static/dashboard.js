@@ -1,207 +1,41 @@
-// Dashboard JavaScript
-const API = {
-    status: '/api/status',
-    guilds: '/api/guilds',
-    guild: (id) => `/api/guilds/${id}`,
-    settings: (id) => `/api/guilds/${id}/settings`,
-    analytics: '/api/analytics',
-    users: '/api/users',
-    songs: '/api/songs',
-    library: '/api/library',
-    topSongs: '/api/analytics/top-songs',
-    userPrefs: (id) => `/api/users/${id}/preferences`,
-    notifications: '/api/notifications',
-    settings_global: '/api/settings/global',
-    leave_guild: (id) => `/api/guilds/${id}/leave`,
-};
-
-// State
-let ws = null;
-let currentGuild = null;
-let currentScope = 'global';
-
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    initWebSocket();
-    fetchStatus();
-    fetchGuilds();
-    fetchAnalytics();
-    fetchSongs();
-    fetchLibrary();
-    fetchUsers();
-    fetchNotifications();
-
-    setInterval(fetchStatus, 5000);
-    setInterval(fetchGuilds, 10000);
-    setInterval(fetchAnalytics, 15000);
-    setInterval(fetchSongs, 30000);
-    setInterval(fetchNotifications, 15000);
-
-    // Tab handling
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchTab(tab.dataset.tab);
-        });
-    });
-});
-
-// WebSocket for live logs
-function initWebSocket() {
-    try {
-        ws = new WebSocket(`ws://${location.host}/ws/logs`);
-        ws.onmessage = (e) => {
-            const log = JSON.parse(e.data);
-            addLogEntry(log);
-        };
-        ws.onclose = () => setTimeout(initWebSocket, 3000);
-    } catch (e) {
-        console.error('WS Error', e);
-    }
-}
-
-function addLogEntry(log) {
-    const logsEl = document.getElementById('logs');
-    if (!logsEl) return;
-
-    const time = new Date(log.timestamp * 1000).toLocaleTimeString();
-    const entry = document.createElement('div');
-    entry.className = `log-entry log-${log.level}`;
-    entry.innerHTML = `<span class="log-time">${time}</span> [${log.level}] ${log.message}`;
-    logsEl.appendChild(entry);
-    logsEl.scrollTop = logsEl.scrollHeight;
-
-    while (logsEl.children.length > 200) logsEl.removeChild(logsEl.firstChild);
-}
-
-// Fetch functions
-async function fetchStatus() {
-    try {
-        const res = await fetch(API.status);
-        const data = await res.json();
-        updateStatus(data);
-    } catch (e) {
-        console.error('Failed to fetch status', e);
-        try { updateStatus({ status: 'offline' }); } catch (e2) { }
-    }
-}
-
-function updateStatus(data) {
-    try {
-        const dot = document.querySelector('.status-dot');
-        const text = document.getElementById('status-text');
-        const guildCount = document.getElementById('stat-guilds');
-        const voiceCount = document.getElementById('stat-voice');
-        const latency = document.getElementById('stat-latency-val');
-        const sidebarLatency = document.getElementById('stat-latency');
-        const cpu = document.getElementById('stat-cpu');
-        const ram = document.getElementById('stat-ram');
-
-        if (dot) dot.className = `status-dot status-${data.status === 'online' ? 'online' : 'offline'}`;
-        if (text) text.textContent = data.status === 'online' ? `Online (${data.latency_ms || 0}ms)` : 'Offline';
-        if (guildCount) guildCount.textContent = data.guilds || 0;
-        if (voiceCount) voiceCount.textContent = data.voice_connections || 0;
-        if (latency) latency.textContent = `${data.latency_ms || 0}ms`;
-        if (sidebarLatency) sidebarLatency.textContent = `${data.latency_ms || 0}ms`;
-        if (cpu) cpu.textContent = data.cpu_percent || 0;
-        if (ram) ram.textContent = data.ram_percent || 0;
-        const uptime = document.getElementById('stat-uptime');
-        if (uptime) uptime.textContent = formatUptime(data.uptime_seconds);
-    } catch (e) { console.error('Error updating status', e); }
-}
-
-async function fetchGuilds() {
-    try {
-        const res = await fetch(API.guilds);
-        const data = await res.json();
-
-        if (!currentGuild && data.guilds && data.guilds.length > 0) {
-            currentGuild = data.guilds[0].id;
-        }
-
-        updateTopBar(data.guilds || []);
-        updateGuildList(data.guilds || []);
-        updateNowPlaying(data.guilds || []);
-    } catch (e) {
-        console.error('Failed to fetch guilds', e);
-    }
-}
-
-function updateTopBar(guilds) {
-    const nav = document.getElementById('server-nav');
-    if (!nav) return;
-
-    let html = `<div class="server-nav-item ${currentScope === 'global' ? 'active' : ''}" onclick="switchScope('global')">Global</div>`;
-
-    html += guilds.map(g => `
-        <div class="server-nav-item ${currentScope === g.id ? 'active' : ''}" onclick="switchScope('${g.id}')">
-            ${g.name || 'Server'}
-            ${g.is_playing ? ' 🔊' : ''}
+(function(){"use strict";var O,ot;O={__e:function(e,t,n,i){for(var s,o,a;t=t.__;)if((s=t.__c)&&!s.__)try{if((o=s.constructor)&&o.getDerivedStateFromError!=null&&(s.setState(o.getDerivedStateFromError(e)),a=s.__d),s.componentDidCatch!=null&&(s.componentDidCatch(e,i||{}),a=s.__d),a)return s.__E=s}catch(r){e=r}throw e}},ot=function(e){return e!=null&&e.constructor===void 0},typeof Promise=="function"&&Promise.prototype.then.bind(Promise.resolve());var Z,p,Q,at,rt=0,lt=[],f=O,ct=f.__b,dt=f.__r,ut=f.diffed,ft=f.__c,vt=f.unmount,mt=f.__;function Rt(e,t){f.__h&&f.__h(p,e,rt||t),rt=0;var n=p.__H||(p.__H={__:[],__h:[]});return e>=n.__.length&&n.__.push({}),n.__[e]}function gt(e,t){var n=Rt(Z++,7);return Qt(n.__H,t)&&(n.__=e(),n.__H=t,n.__h=e),n.__}function Jt(){for(var e;e=lt.shift();)if(e.__P&&e.__H)try{e.__H.__h.forEach(F),e.__H.__h.forEach(V),e.__H.__h=[]}catch(t){e.__H.__h=[],f.__e(t,e.__v)}}f.__b=function(e){p=null,ct&&ct(e)},f.__=function(e,t){e&&t.__k&&t.__k.__m&&(e.__m=t.__k.__m),mt&&mt(e,t)},f.__r=function(e){dt&&dt(e),Z=0;var t=(p=e.__c).__H;t&&(Q===p?(t.__h=[],p.__h=[],t.__.forEach(function(n){n.__N&&(n.__=n.__N),n.u=n.__N=void 0})):(t.__h.forEach(F),t.__h.forEach(V),t.__h=[],Z=0)),Q=p},f.diffed=function(e){ut&&ut(e);var t=e.__c;t&&t.__H&&(t.__H.__h.length&&(lt.push(t)!==1&&at===f.requestAnimationFrame||((at=f.requestAnimationFrame)||Zt)(Jt)),t.__H.__.forEach(function(n){n.u&&(n.__H=n.u),n.u=void 0})),Q=p=null},f.__c=function(e,t){t.some(function(n){try{n.__h.forEach(F),n.__h=n.__h.filter(function(i){return!i.__||V(i)})}catch(i){t.some(function(s){s.__h&&(s.__h=[])}),t=[],f.__e(i,n.__v)}}),ft&&ft(e,t)},f.unmount=function(e){vt&&vt(e);var t,n=e.__c;n&&n.__H&&(n.__H.__.forEach(function(i){try{F(i)}catch(s){t=s}}),n.__H=void 0,t&&f.__e(t,n.__v))};var yt=typeof requestAnimationFrame=="function";function Zt(e){var t,n=function(){clearTimeout(i),yt&&cancelAnimationFrame(t),setTimeout(e)},i=setTimeout(n,35);yt&&(t=requestAnimationFrame(n))}function F(e){var t=p,n=e.__c;typeof n=="function"&&(e.__c=void 0,n()),p=t}function V(e){var t=p;e.__c=e.__(),p=t}function Qt(e,t){return!e||e.length!==t.length||t.some(function(n,i){return n!==e[i]})}var Vt=Symbol.for("preact-signals");function X(){if(B>1)B--;else{for(var e,t=!1;N!==void 0;){var n=N;for(N=void 0,Y++;n!==void 0;){var i=n.o;if(n.o=void 0,n.f&=-3,!(8&n.f)&&_t(n))try{n.c()}catch(s){t||(e=s,t=!0)}n=i}}if(Y=0,B--,t)throw e}}var l=void 0;function pt(e){var t=l;l=void 0;try{return e()}finally{l=t}}var N=void 0,B=0,Y=0,z=0;function ht(e){if(l!==void 0){var t=e.n;if(t===void 0||t.t!==l)return t={i:0,S:e,p:l.s,n:void 0,t:l,e:void 0,x:void 0,r:t},l.s!==void 0&&(l.s.n=t),l.s=t,e.n=t,32&l.f&&e.S(t),t;if(t.i===-1)return t.i=0,t.n!==void 0&&(t.n.p=t.p,t.p!==void 0&&(t.p.n=t.n),t.p=l.s,t.n=void 0,l.s.n=t,l.s=t),t}}function m(e,t){this.v=e,this.i=0,this.n=void 0,this.t=void 0,this.W=t==null?void 0:t.watched,this.Z=t==null?void 0:t.unwatched,this.name=t==null?void 0:t.name}m.prototype.brand=Vt,m.prototype.h=function(){return!0},m.prototype.S=function(e){var t=this,n=this.t;n!==e&&e.e===void 0&&(e.x=n,this.t=e,n!==void 0?n.e=e:pt(function(){var i;(i=t.W)==null||i.call(t)}))},m.prototype.U=function(e){var t=this;if(this.t!==void 0){var n=e.e,i=e.x;n!==void 0&&(n.x=i,e.e=void 0),i!==void 0&&(i.e=n,e.x=void 0),e===this.t&&(this.t=i,i===void 0&&pt(function(){var s;(s=t.Z)==null||s.call(t)}))}},m.prototype.subscribe=function(e){var t=this;return S(function(){var n=t.value,i=l;l=void 0;try{e(n)}finally{l=i}},{name:"sub"})},m.prototype.valueOf=function(){return this.value},m.prototype.toString=function(){return this.value+""},m.prototype.toJSON=function(){return this.value},m.prototype.peek=function(){var e=l;l=void 0;try{return this.value}finally{l=e}},Object.defineProperty(m.prototype,"value",{get:function(){var e=ht(this);return e!==void 0&&(e.i=this.i),this.v},set:function(e){if(e!==this.v){if(Y>100)throw new Error("Cycle detected");this.v=e,this.i++,z++,B++;try{for(var t=this.t;t!==void 0;t=t.x)t.t.N()}finally{X()}}}});function E(e,t){return new m(e,t)}function _t(e){for(var t=e.s;t!==void 0;t=t.n)if(t.S.i!==t.i||!t.S.h()||t.S.i!==t.i)return!0;return!1}function bt(e){for(var t=e.s;t!==void 0;t=t.n){var n=t.S.n;if(n!==void 0&&(t.r=n),t.S.n=t,t.i=-1,t.n===void 0){e.s=t;break}}}function wt(e){for(var t=e.s,n=void 0;t!==void 0;){var i=t.p;t.i===-1?(t.S.U(t),i!==void 0&&(i.n=t.n),t.n!==void 0&&(t.n.p=i)):n=t,t.S.n=t.r,t.r!==void 0&&(t.r=void 0),t=i}e.s=n}function x(e,t){m.call(this,void 0),this.x=e,this.s=void 0,this.g=z-1,this.f=4,this.W=t==null?void 0:t.watched,this.Z=t==null?void 0:t.unwatched,this.name=t==null?void 0:t.name}x.prototype=new m,x.prototype.h=function(){if(this.f&=-3,1&this.f)return!1;if((36&this.f)==32||(this.f&=-5,this.g===z))return!0;if(this.g=z,this.f|=1,this.i>0&&!_t(this))return this.f&=-2,!0;var e=l;try{bt(this),l=this;var t=this.x();(16&this.f||this.v!==t||this.i===0)&&(this.v=t,this.f&=-17,this.i++)}catch(n){this.v=n,this.f|=16,this.i++}return l=e,wt(this),this.f&=-2,!0},x.prototype.S=function(e){if(this.t===void 0){this.f|=36;for(var t=this.s;t!==void 0;t=t.n)t.S.S(t)}m.prototype.S.call(this,e)},x.prototype.U=function(e){if(this.t!==void 0&&(m.prototype.U.call(this,e),this.t===void 0)){this.f&=-33;for(var t=this.s;t!==void 0;t=t.n)t.S.U(t)}},x.prototype.N=function(){if(!(2&this.f)){this.f|=6;for(var e=this.t;e!==void 0;e=e.x)e.t.N()}},Object.defineProperty(x.prototype,"value",{get:function(){if(1&this.f)throw new Error("Cycle detected");var e=ht(this);if(this.h(),e!==void 0&&(e.i=this.i),16&this.f)throw this.v;return this.v}});function Xt(e,t){return new x(e,t)}function Et(e){var t=e.u;if(e.u=void 0,typeof t=="function"){B++;var n=l;l=void 0;try{t()}catch(i){throw e.f&=-2,e.f|=8,K(e),i}finally{l=n,X()}}}function K(e){for(var t=e.s;t!==void 0;t=t.n)t.S.U(t);e.x=void 0,e.s=void 0,Et(e)}function Yt(e){if(l!==this)throw new Error("Out-of-order effect");wt(this),l=e,this.f&=-2,8&this.f&&K(this),X()}function C(e,t){this.x=e,this.u=void 0,this.s=void 0,this.o=void 0,this.f=32,this.name=t==null?void 0:t.name}C.prototype.c=function(){var e=this.S();try{if(8&this.f||this.x===void 0)return;var t=this.x();typeof t=="function"&&(this.u=t)}finally{e()}},C.prototype.S=function(){if(1&this.f)throw new Error("Cycle detected");this.f|=1,this.f&=-9,Et(this),bt(this),B++;var e=l;return l=this,Yt.bind(this,e)},C.prototype.N=function(){2&this.f||(this.f|=2,this.o=N,N=this)},C.prototype.d=function(){this.f|=8,1&this.f||K(this)},C.prototype.dispose=function(){this.d()};function S(e,t){var n=new C(e,t);try{n.c()}catch(s){throw n.d(),s}var i=n.d.bind(n);return i[Symbol.dispose]=i,i}var W;function L(e,t){O[e]=t.bind(null,O[e]||function(){})}function R(e){if(W){var t=W;W=void 0,t()}W=e&&e.S()}function $t(e){var t=this,n=e.data,i=te(n);i.value=n;var s=gt(function(){for(var o=t.__v;o=o.__;)if(o.__c){o.__c.__$f|=4;break}return t.__$u.c=function(){var a,r=t.__$u.S(),v=s.value;r(),ot(v)||((a=t.base)==null?void 0:a.nodeType)!==3?(t.__$f|=1,t.setState({})):t.base.data=v},Xt(function(){var a=i.value.value;return a===0?0:a===!0?"":a||""})},[]);return s.value}$t.displayName="_st",Object.defineProperties(m.prototype,{constructor:{configurable:!0,value:void 0},type:{configurable:!0,value:$t},props:{configurable:!0,get:function(){return{data:this}}},__b:{configurable:!0,value:1}}),L("__b",function(e,t){if(typeof t.type=="string"){var n,i=t.props;for(var s in i)if(s!=="children"){var o=i[s];o instanceof m&&(n||(t.__np=n={}),n[s]=o,i[s]=o.peek())}}e(t)}),L("__r",function(e,t){e(t),R();var n,i=t.__c;i&&(i.__$f&=-2,(n=i.__$u)===void 0&&(i.__$u=n=function(s){var o;return S(function(){o=this}),o.c=function(){i.__$f|=1,i.setState({})},o}())),R(n)}),L("__e",function(e,t,n,i){R(),e(t,n,i)}),L("diffed",function(e,t){R();var n;if(typeof t.type=="string"&&(n=t.__e)){var i=t.__np,s=t.props;if(i){var o=n.U;if(o)for(var a in o){var r=o[a];r!==void 0&&!(a in i)&&(r.d(),o[a]=void 0)}else n.U=o={};for(var v in i){var g=o[v],h=i[v];g===void 0?(g=Kt(n,v,h,s),o[v]=g):g.o(h,s)}}}e(t)});function Kt(e,t,n,i){var s=t in e&&e.ownerSVGElement===void 0,o=E(n);return{o:function(a,r){o.value=a,i=r},d:S(function(){var a=o.value.value;i[t]!==a&&(i[t]=a,s?e[t]=a:a?e.setAttribute(t,a):e.removeAttribute(t))})}}L("unmount",function(e,t){if(typeof t.type=="string"){var n=t.__e;if(n){var i=n.U;if(i){n.U=void 0;for(var s in i){var o=i[s];o&&o.d()}}}}else{var a=t.__c;if(a){var r=a.__$u;r&&(a.__$u=void 0,r.d())}}e(t)}),L("__h",function(e,t,n,i){(i<3||i===9)&&(t.__$f|=2),e(t,n,i)});function te(e){return gt(function(){return E(e)},[])}const y={status:"/api/status",guilds:"/api/guilds",guild:e=>`/api/guilds/${e}`,settings:e=>`/api/guilds/${e}/settings`,analytics:"/api/analytics",users:"/api/users",songs:"/api/songs",library:"/api/library",topSongs:"/api/analytics/top-songs",userPrefs:e=>`/api/users/${e}/preferences`,notifications:"/api/notifications",settings_global:"/api/settings/global",leave_guild:e=>`/api/guilds/${e}/leave`},$=E(null),c=E("global"),q=E([]),T=E(1),tt=50,et=E({status:"offline"}),ee=E([]);S(()=>{Tt(),Mt()}),S(()=>{c.value!=="global"&&it()}),S(()=>{St(et.value)}),S(()=>{jt()}),document.addEventListener("DOMContentLoaded",()=>{It(),kt(),it(),Mt(),le(),setInterval(xt,5e3),setInterval(nt,1e4),setInterval(Tt,15e3),setInterval(it,3e4),setInterval(ye,15e3),document.querySelectorAll(".tab").forEach(e=>{e.addEventListener("click",t=>{t.preventDefault(),J(e.dataset.tab)})})});function It(){try{ws=new WebSocket(`ws://${location.host}/ws/logs`),ws.onmessage=e=>{const t=JSON.parse(e.data);ne(t)},ws.onclose=()=>setTimeout(It,3e3)}catch(e){console.error("WS Error",e)}}function ne(e){const t=document.getElementById("logs");if(!t)return;const n=new Date(e.timestamp*1e3).toLocaleTimeString(),i=document.createElement("div");for(i.className=`log-entry log-${e.level}`,i.innerHTML=`<span class="log-time">${n}</span> [${e.level}] ${e.message}`,t.appendChild(i),t.scrollTop=t.scrollHeight;t.children.length>200;)t.removeChild(t.firstChild)}async function kt(){ie();try{const t=await(await fetch("/api/dashboard-init")).json();if(t.status&&St(t.status),t.guilds&&(Bt(t.guilds),c.value!=="global")){const n=t.guilds.find(i=>i.id===c.value);if(n){const i=document.getElementById("server-stat-members");i&&(i.textContent=n.member_count||0);const s=document.getElementById("server-stat-queue");s&&(s.textContent=n.queue_size||0);const o=document.getElementById("server-stat-duration");o&&(o.textContent=`${n.queue_duration||0}m`)}}Ct(t.guilds),Lt(t.guilds),Pt(t.analytics),ee.value=t.notifications,Nt(t.notifications),!$.value&&t.guilds.length>0&&($.value=t.guilds[0].id),Ht(t.analytics)}catch(e){console.error("Init failed",e)}}function ie(){const e=document.getElementById("now-playing");e&&(e.innerHTML=`
+        <div class="np-content">
+            <div class="skeleton skeleton-artwork"></div>
+            <div class="np-info">
+                <div class="skeleton skeleton-text" style="width: 60%"></div>
+                <div class="skeleton skeleton-text" style="width: 40%"></div>
+                <div class="skeleton skeleton-text" style="width: 80%; height: 2rem; margin-top: 1rem;"></div>
+            </div>
         </div>
-    `).join('');
-
-    nav.innerHTML = html;
-}
-
-function updateGuildList(guilds) {
-    const list = document.getElementById('guild-list');
-    if (!list) return;
-
-    list.innerHTML = guilds.map(g => `
-        <div class="user-item ${g.id === currentGuild ? 'active' : ''}" onclick="selectGuild(event, '${g.id}')">
-            <div class="user-avatar">${(g.name || '?').charAt(0)}</div>
+    `),document.querySelectorAll(".stat-value").forEach(n=>n.innerHTML='<span class="skeleton skeleton-text" style="width: 40px; height: 2rem;"></span>')}async function xt(){try{const t=await(await fetch(y.status)).json();et.value=t}catch(e){console.error("Failed to fetch status",e);try{et.value={status:"offline"}}catch{}}}function St(e){try{const t=document.querySelector(".status-dot"),n=document.getElementById("status-text"),i=document.getElementById("stat-guilds"),s=document.getElementById("stat-voice"),o=document.getElementById("stat-latency-val"),a=document.getElementById("stat-latency"),r=document.getElementById("stat-cpu"),v=document.getElementById("stat-ram");t&&(t.className=`status-dot status-${e.status==="online"?"online":"offline"}`),n&&(n.textContent=e.status==="online"?`Online (${e.latency_ms||0}ms)`:"Offline"),i&&(i.textContent=e.guilds||0),s&&(s.textContent=e.voice_connections||0),o&&(o.textContent=`${e.latency_ms||0}ms`),a&&(a.textContent=`${e.latency_ms||0}ms`),r&&(r.textContent=e.cpu_percent||0),v&&(v.textContent=e.ram_percent||0);const g=document.getElementById("stat-uptime");g&&(g.textContent=qt(e.uptime_seconds))}catch(t){console.error("Error updating status",t)}}async function nt(){try{const t=await(await fetch(y.guilds)).json();if(!$.value&&t.guilds&&t.guilds.length>0&&($.value=t.guilds[0].id),Bt(t.guilds||[]),Ct(t.guilds||[]),Lt(t.guilds||[]),c.value!=="global"&&t.guilds){const n=t.guilds.find(i=>i.id===c.value);if(n){const i=document.getElementById("server-stat-members");i&&(i.textContent=n.member_count||0);const s=document.getElementById("server-stat-queue");s&&(s.textContent=n.queue_size||0);const o=document.getElementById("server-stat-duration");o&&(o.textContent=`${n.queue_duration||0}m`)}}}catch(e){console.error("Failed to fetch guilds",e)}}function Bt(e){const t=document.getElementById("server-nav");if(!t)return;let n=`<div class="server-nav-item ${c.value==="global"?"active":""}" onclick="switchScope('global')">Global</div>`;n+=e.map(i=>`
+        <div class="server-nav-item ${c.value===i.id?"active":""}" onclick="switchScope('${i.id}')">
+            ${i.name||"Server"}
+            ${i.is_playing?" 🔊":""}
+        </div>
+    `).join(""),t.innerHTML=n}function Ct(e){const t=document.getElementById("guild-list");t&&(t.innerHTML=e.map(n=>`
+        <div class="user-item ${n.id===$.value?"active":""}" onclick="selectGuild(event, '${n.id}')">
+            <div class="user-avatar">${(n.name||"?").charAt(0)}</div>
             <div class="user-info">
-                <div class="user-name">${g.name || 'Unknown Server'}</div>
-                <div class="user-stats">${g.member_count || 0} members</div>
+                <div class="user-name">${n.name||"Unknown Server"}</div>
+                <div class="user-stats">${n.member_count||0} members</div>
             </div>
             <div class="user-actions" style="display: flex; gap: 0.5rem; align-items: center;">
-                ${g.is_playing ? '<span style="color: var(--success); font-size: 0.8rem;">▶ Playing</span>' : ''}
-                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="event.stopPropagation(); leaveGuild('${g.id}')">Leave</button>
+                ${n.is_playing?'<span style="color: var(--success); font-size: 0.8rem;">▶ Playing</span>':""}
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="event.stopPropagation(); leaveGuild('${n.id}')">Leave</button>
             </div>
         </div>
-    `).join('');
-}
-
-async function leaveGuild(id) {
-    if (!confirm('Are you sure you want the bot to leave this server?')) return;
-    try {
-        const res = await fetch(API.leave_guild(id), { method: 'POST' });
-        if (res.ok) fetchGuilds();
-        else alert('Failed to leave server');
-    } catch (e) { console.error(e); alert('Error leaving server'); }
-}
-
-function updateNowPlaying(guilds) {
-    const np = document.getElementById('now-playing');
-    if (!np) return;
-
-    let playing = null;
-    if (currentScope === 'global') {
-        playing = guilds.find(g => g.is_playing && g.current_song);
-    } else {
-        playing = guilds.find(g => g.id === currentScope && g.is_playing && g.current_song);
-    }
-
-    if (playing) {
-        let durationStr = '';
-        if (playing.duration_seconds) {
-            const mins = Math.floor(playing.duration_seconds / 60);
-            const secs = playing.duration_seconds % 60;
-            durationStr = `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        np.innerHTML = `
+    `).join(""))}async function se(e){if(confirm("Are you sure you want the bot to leave this server?"))try{(await fetch(y.leave_guild(e),{method:"POST"})).ok?nt():alert("Failed to leave server")}catch(t){console.error(t),alert("Error leaving server")}}async function oe(){if(!c.value||c.value==="global")return;const e=c.value;if(confirm("Are you sure you want the bot to leave this server? This action is permanent!"))try{(await fetch(y.leave_guild(e),{method:"POST"})).ok?(alert("Bot has left the server."),st("global"),kt()):alert("Failed to leave server")}catch(t){console.error(t),alert("Error leaving server")}}function Lt(e){const t=document.getElementById("now-playing");if(!t)return;let n=null;if(c.value==="global"?n=e.find(i=>i.is_playing&&i.current_song):n=e.find(i=>i.id===c.value&&i.is_playing&&i.current_song),n){let i="";if(n.duration_seconds){const s=Math.floor(n.duration_seconds/60),o=n.duration_seconds%60;i=`${s}:${o.toString().padStart(2,"0")}`}t.innerHTML=`
             <div class="np-content">
-                <img class="np-artwork" src="https://img.youtube.com/vi/${playing.video_id || 'dQw4w9WgXcQ'}/hqdefault.jpg" alt="Album art">
+                <img class="np-artwork" src="https://img.youtube.com/vi/${n.video_id||"dQw4w9WgXcQ"}/hqdefault.jpg" alt="Album art">
                 <div class="np-info">
-                    <div class="np-title">${playing.current_song || 'Unknown'}</div>
-                    <div class="np-artist">${playing.current_artist || 'Unknown Artist'}</div>
+                    <div class="np-title">${n.current_song||"Unknown"}</div>
+                    <div class="np-artist">${n.current_artist||"Unknown Artist"}</div>
                     <div class="np-metadata">
-                        ${durationStr ? `<span>⏳ ${durationStr}</span>` : ''}
-                        ${playing.genre ? `<span>🏷️ ${playing.genre}</span>` : ''}
-                        ${playing.year ? `<span>📅 ${playing.year}</span>` : ''}
+                        ${i?`<span>⏳ ${i}</span>`:""}
+                        ${n.genre?`<span>🏷️ ${n.genre}</span>`:""}
+                        ${n.year?`<span>📅 ${n.year}</span>`:""}
                     </div>
-                    ${playing.discovery_reason ? `<div class="np-discovery">${playing.discovery_reason}</div>` : ''}
+                    ${n.discovery_reason?`<div class="np-discovery">${n.discovery_reason}</div>`:""}
                     <div class="np-controls">
                         <button class="np-btn" onclick="control('pause')">⏸️</button>
                         <button class="np-btn" onclick="control('skip')">⏭️</button>
@@ -209,480 +43,77 @@ function updateNowPlaying(guilds) {
                     </div>
                 </div>
             </div>
-        `;
-        np.style.display = 'block';
-    } else {
-        np.innerHTML = `<div class="np-content" style="justify-content: center;"><span style="color: var(--text-muted);">Nothing playing</span></div>`;
-    }
-}
-
-async function fetchAnalytics() {
-    try {
-        let url = API.analytics;
-        if (currentScope !== 'global') url += `?guild_id=${currentScope}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        updateAnalytics(data);
-    } catch (e) { console.error('Failed to fetch analytics', e); }
-}
-
-function updateAnalytics(data) {
-    try {
-        const songsEl = document.getElementById('stat-songs');
-        const usersEl = document.getElementById('stat-users');
-        const elPlays = document.getElementById('stat-plays');
-        if (elPlays) elPlays.textContent = data.total_plays || 0;
-
-        const elUptime = document.getElementById('stat-uptime');
-        if (elUptime && data.uptime_seconds) {
-            elUptime.textContent = formatUptime(data.uptime_seconds);
-        }
-        if (songsEl) songsEl.textContent = data.total_songs || 0;
-        if (usersEl) usersEl.textContent = data.total_users || 0;
-
-        // Top songs
-        const songTable = document.getElementById('top-songs-table');
-        if (songTable) {
-            if (!data.top_songs || data.top_songs.length === 0) {
-                songTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">No songs played yet</td></tr>';
-            } else {
-                songTable.innerHTML = data.top_songs.slice(0, 10).map((s, i) => `
+        `,t.style.display="block"}else t.innerHTML='<div class="np-content" style="justify-content: center;"><span style="color: var(--text-muted);">Nothing playing</span></div>'}async function Tt(){try{let e=y.analytics;c.value!=="global"&&(e+=`?guild_id=${c.value}`);const n=await(await fetch(e)).json();Pt(n)}catch(e){console.error("Failed to fetch analytics",e)}}function Pt(e){var t,n,i,s,o,a,r,v,g;try{const h=document.getElementById("stat-songs"),U=document.getElementById("stat-users"),D=document.getElementById("stat-plays");D&&(D.textContent=e.total_plays||0);const I=document.getElementById("stat-uptime");I&&e.uptime_seconds&&(I.textContent=qt(e.uptime_seconds)),h&&(h.textContent=e.total_songs||0),U&&(U.textContent=e.total_users||0);const _=document.getElementById("stat-songs-global");_&&(_.textContent=e.total_songs||0);const k=document.getElementById("stat-plays-global");k&&(k.textContent=e.total_plays||0);const b=document.getElementById("stat-users-global");b&&(b.textContent=e.total_users||0);const w=document.getElementById("top-songs-table");w&&(!e.top_songs||e.top_songs.length===0?w.innerHTML='<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">No songs played yet</td></tr>':w.innerHTML=e.top_songs.slice(0,10).map((u,M)=>`
                     <tr>
-                        <td>${i + 1}</td>
+                        <td>${M+1}</td>
                         <td>
                             <div class="song-cell">
-                                <img class="song-thumb" src="https://img.youtube.com/vi/${s.yt_id}/default.jpg" alt="">
+                                <img class="song-thumb" src="https://img.youtube.com/vi/${u.yt_id}/default.jpg" alt="">
                                 <div class="song-info">
-                                    <span class="song-name">${s.title}</span>
-                                    <span class="song-artist">${s.artist}</span>
+                                    <span class="song-name">${u.title}</span>
+                                    <span class="song-artist">${u.artist}</span>
                                 </div>
                             </div>
                         </td>
-                        <td>${s.plays}</td>
-                        <td>${s.likes} ❤️</td>
+                        <td>${u.plays}</td>
+                        <td>${u.likes} ❤️</td>
                     </tr>
-                `).join('');
-            }
-        }
-
-        // Top users
-        const userList = document.getElementById('top-users-list');
-        if (userList) {
-            if (!data.top_users || data.top_users.length === 0) {
-                userList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No users active yet</div>';
-            } else {
-                userList.innerHTML = data.top_users.slice(0, 10).map(u => `
+                `).join(""));const P=document.getElementById("top-users-list");P&&(!e.top_users||e.top_users.length===0?P.innerHTML='<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No users active yet</div>':P.innerHTML=e.top_users.slice(0,10).map(u=>`
                     <div class="user-item" onclick="viewUser('${u.id}')">
-                        <div class="user-avatar">${(u.name || '?').charAt(0)}</div>
+                        <div class="user-avatar">${(u.name||"?").charAt(0)}</div>
                         <div class="user-info">
-                            <div class="user-name">${u.name || 'Unknown'}</div>
-                            <div class="user-stats">${u.plays || 0} plays • ${u.total_likes || 0} likes</div>
+                            <div class="user-name">${u.name||"Unknown"}</div>
+                            <div class="user-stats">${u.plays||0} plays • ${u.total_likes||0} likes</div>
                         </div>
                     </div>
-                `).join('');
-            }
-        }
-
-        // Insights
-        const elements = {
-            'insight-liked-genre': data.top_liked_genres?.[0]?.name,
-            'insight-liked-artist': data.top_liked_artists?.[0]?.name,
-            'insight-liked-song': data.top_liked_songs?.[0] ? `${data.top_liked_songs[0].title} by ${data.top_liked_songs[0].artist}` : null,
-            'insight-played-genre': data.top_played_genres?.[0]?.name,
-            'insight-played-artist': data.top_played_artists?.[0]?.name
-        };
-        for (const [id, val] of Object.entries(elements)) {
-            const el = document.getElementById(id);
-            if (el) el.textContent = val || '-';
-        }
-
-        const usefulList = document.getElementById('useful-users-list');
-        if (usefulList) {
-            if (!data.top_useful_users || data.top_useful_users.length === 0) {
-                usefulList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No useful activity yet</div>';
-            } else {
-                usefulList.innerHTML = data.top_useful_users.map(u => `
+                `).join(""));const H={"insight-liked-genre":(n=(t=e.top_liked_genres)==null?void 0:t[0])==null?void 0:n.name,"insight-liked-artist":(s=(i=e.top_liked_artists)==null?void 0:i[0])==null?void 0:s.name,"insight-liked-song":(o=e.top_liked_songs)!=null&&o[0]?`${e.top_liked_songs[0].title} by ${e.top_liked_songs[0].artist}`:null,"insight-played-genre":(r=(a=e.top_played_genres)==null?void 0:a[0])==null?void 0:r.name,"insight-played-artist":(g=(v=e.top_played_artists)==null?void 0:v[0])==null?void 0:g.name};for(const[u,M]of Object.entries(H)){const G=document.getElementById(u);G&&(G.textContent=M||"-")}const A=document.getElementById("useful-users-list");A&&(!e.top_useful_users||e.top_useful_users.length===0?A.innerHTML='<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No useful activity yet</div>':A.innerHTML=e.top_useful_users.map(u=>`
                     <div class="user-item">
-                        <div class="user-avatar" style="background: var(--gradient-2)">${(u.username || '?').charAt(0)}</div>
+                        <div class="user-avatar" style="background: var(--gradient-2)">${(u.username||"?").charAt(0)}</div>
                         <div class="user-info">
-                            <div class="user-name">${u.username || 'Unknown'}</div>
-                            <div class="user-stats">${u.score || 0} helpfulness points</div>
+                            <div class="user-name">${u.username||"Unknown"}</div>
+                            <div class="user-stats">${u.score||0} helpfulness points</div>
                         </div>
                     </div>
-                `).join('');
-            }
-        }
-    } catch (e) { console.error('Error updating analytics', e); }
-}
-
-async function fetchSongs() {
-    try {
-        let url = API.songs;
-        if (currentScope !== 'global') url += `?guild_id=${currentScope}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        updateSongsList(data.songs || []);
-    } catch (e) { console.error(e); }
-}
-
-function updateSongsList(songs) {
-    const list = document.getElementById('songs-list');
-    if (!list) return;
-
-    if (songs.length === 0) {
-        list.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No songs found</td></tr>';
-        return;
-    }
-
-    list.innerHTML = songs.map(s => {
-        let durationStr = '-';
-        if (s.duration_seconds) {
-            const mins = Math.floor(s.duration_seconds / 60);
-            const secs = s.duration_seconds % 60;
-            durationStr = `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-        let timeStr = s.played_at ? new Date(s.played_at).toLocaleString() : 'Never';
-
-        return `
+                `).join("")),At(e),c.value!=="global"&&ae(e)}catch(h){console.error("Error updating analytics",h)}}let d={};function Ht(e){if(!window.Chart)return;const t={primary:"#8b5cf6",secondary:"#ec4899",tertiary:"#06b6d4",text:"#64748b"},n=document.getElementById("plays-chart");n&&(d.plays&&d.plays.destroy(),d.plays=new Chart(n,{type:"line",data:{labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],datasets:[{label:"Plays",data:e.playback_trends||[10,25,15,30,45,20,35],borderColor:t.primary,backgroundColor:"rgba(139, 92, 246, 0.1)",fill:!0,tension:.4}]},options:{responsive:!0,maintainAspectRatio:!1,plugins:{legend:{display:!1}},scales:{y:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:t.text}},x:{grid:{display:!1},ticks:{color:t.text}}}}}));const i=document.getElementById("genres-chart");if(i){d.genres&&d.genres.destroy();const a=(e.top_played_genres||[]).slice(0,5);d.genres=new Chart(i,{type:"doughnut",data:{labels:a.map(r=>r.name||"Unknown"),datasets:[{data:a.map(r=>r.plays||0),backgroundColor:[t.primary,t.secondary,t.tertiary,"#f59e0b","#10b981"],borderWidth:0}]},options:{responsive:!0,maintainAspectRatio:!1,plugins:{legend:{position:"right",labels:{color:t.text,padding:20}}}}})}const s=document.getElementById("server-plays-chart");s&&(d.serverPlays&&d.serverPlays.destroy(),d.serverPlays=new Chart(s,{type:"line",data:{labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],datasets:[{label:"Server Plays",data:e.playback_trends||[0,0,0,0,0,0,0],borderColor:t.secondary,backgroundColor:"rgba(236, 72, 153, 0.1)",fill:!0,tension:.4}]},options:{responsive:!0,maintainAspectRatio:!1,plugins:{legend:{display:!1}},scales:{y:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:t.text}},x:{grid:{display:!1},ticks:{color:t.text}}}}}));const o=document.getElementById("peak-chart");o&&(d.peak&&d.peak.destroy(),d.peak=new Chart(o,{type:"bar",data:{labels:Array.from({length:24},(a,r)=>`${r}h`),datasets:[{label:"Plays",data:e.peak_hours||Array(24).fill(0),backgroundColor:t.tertiary,borderRadius:4}]},options:{responsive:!0,maintainAspectRatio:!1,plugins:{legend:{display:!1}},scales:{y:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:t.text}},x:{grid:{display:!1},ticks:{color:t.text,font:{size:9}}}}}}))}function At(e){if(e){if(d.plays&&e.playback_trends&&(d.plays.data.datasets[0].data=e.playback_trends,d.plays.update()),d.genres&&e.top_played_genres){const t=e.top_played_genres.slice(0,5);d.genres.data.labels=t.map(n=>n.name),d.genres.data.datasets[0].data=t.map(n=>n.plays),d.genres.update()}d.peak&&e.peak_hours&&(d.peak.data.datasets[0].data=e.peak_hours,d.peak.update())}}function ae(e){d.serverPlays&&e.playback_trends&&(d.serverPlays.data.datasets[0].data=e.playback_trends,d.serverPlays.update())}async function it(){try{let e=y.songs;c.value!=="global"&&(e+=`?guild_id=${c.value}`);const n=await(await fetch(e)).json();re(n.songs||[])}catch(e){console.error(e)}}function re(e){const t=document.getElementById("songs-list");if(t){if(e.length===0){t.innerHTML='<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No songs found</td></tr>';return}t.innerHTML=e.map(n=>{let i="-";if(n.duration_seconds){const o=Math.floor(n.duration_seconds/60),a=n.duration_seconds%60;i=`${o}:${a.toString().padStart(2,"0")}`}let s=n.played_at?new Date(n.played_at).toLocaleString():"Never";return`
             <tr>
-                <td>${s.title}</td>
-                <td>${s.artist_name}</td>
-                <td>${durationStr}</td>
-                <td>${s.genre || '-'}</td>
-                <td><span class="user-list">${s.requested_by || '-'}</span></td>
-                <td><span class="user-list liked">${s.liked_by || '-'}</span></td>
-                <td><span class="user-list disliked">${s.disliked_by || '-'}</span></td>
-                <td>${timeStr}</td>
+                <td>${n.title}</td>
+                <td>${n.artist_name}</td>
+                <td>${i}</td>
+                <td>${n.genre||"-"}</td>
+                <td><span class="user-list">${n.requested_by||"-"}</span></td>
+                <td><span class="user-list liked">${n.liked_by||"-"}</span></td>
+                <td><span class="user-list disliked">${n.disliked_by||"-"}</span></td>
+                <td>${s}</td>
             </tr>
-        `;
-    }).join('');
-}
-
-async function fetchUsers() {
-    try {
-        let url = API.users;
-        if (currentScope !== 'global') url += `?guild_id=${currentScope}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        updateUserDirectory(data.users || []);
-    } catch (e) { console.error(e); }
-}
-
-function updateUserDirectory(users) {
-    const list = document.getElementById('users-directory');
-    if (!list) return;
-
-    if (users.length === 0) {
-        list.innerHTML = '<div style="text-align: center; color: var(--text-muted);">No users found</div>';
-        return;
-    }
-
-    list.innerHTML = users.map(u => `
+        `}).join("")}}async function le(){try{let e=y.users;c.value!=="global"&&(e+=`?guild_id=${c.value}`);const n=await(await fetch(e)).json();ce(n.users||[])}catch(e){console.error(e)}}function ce(e){const t=document.getElementById("users-directory");if(t){if(e.length===0){t.innerHTML='<div style="text-align: center; color: var(--text-muted);">No users found</div>';return}t.innerHTML=e.map(n=>`
         <div class="user-item">
-            <div class="user-avatar">${(u.username || '?').charAt(0)}</div>
+            <div class="user-avatar">${(n.username||"?").charAt(0)}</div>
             <div class="user-info">
-                <div class="user-name">${u.username || 'Unknown'}</div>
-                <div class="user-stats">${u.formatted_id || u.discord_id || 'ID: ' + u.id}</div>
+                <div class="user-name">${n.username||"Unknown"}</div>
+                <div class="user-stats">${n.formatted_id||n.discord_id||"ID: "+n.id}</div>
             </div>
             <div class="user-metrics" style="margin-left: auto; text-align: right; font-size: 0.8rem; color: var(--text-muted);">
-                <div>${u.reactions || 0} reactions</div>
-                <div>${u.playlists || 0} playlists</div>
+                <div>${n.reactions||0} reactions</div>
+                <div>${n.playlists||0} playlists</div>
             </div>
         </div>
-    `).join('');
-}
-
-async function fetchLibrary() {
-    try {
-        let url = API.library;
-        if (currentScope !== 'global') url += `?guild_id=${currentScope}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        updateLibraryList(data.library || []);
-    } catch (e) { console.error(e); }
-}
-
-function updateLibraryList(library) {
-    const list = document.getElementById('library-list');
-    if (!list) return;
-
-    if (library.length === 0) {
-        list.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Library is empty</td></tr>';
-        return;
-    }
-
-    list.innerHTML = library.map(s => {
-        let dateStr = s.last_added ? new Date(s.last_added).toLocaleDateString() : '-';
-        const sourceMap = { 'request': '📨 Request', 'like': '❤️ Like', 'import': '📥 Import' };
-        const sourcesFormatted = (s.sources || '').split(',').map(src => sourceMap[src] || src).join(', ');
-
-        return `
+    `).join("")}}async function Mt(){try{let e=y.library;c.value!=="global"&&(e+=`?guild_id=${c.value}`);const n=await(await fetch(e)).json();q.value=n.library||[],T.value=1,jt()}catch(e){console.error(e)}}function jt(){const e=document.getElementById("library-list"),t=document.getElementById("library-pagination");if(!e||!t)return;if(q.value.length===0){e.innerHTML='<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Library is empty</td></tr>',t.innerHTML="";return}const n=(T.value-1)*tt,i=n+tt,s=q.value.slice(n,i);e.innerHTML=s.map(a=>{let r=a.last_added?new Date(a.last_added).toLocaleDateString():"-";const v={request:"📨 Request",like:"❤️ Like",import:"📥 Import"},g=(a.sources||"").split(",").map(h=>v[h]||h).join(", ");return`
             <tr>
-                <td>${s.title}</td>
-                <td>${s.artist_name}</td>
-                <td>${s.genre || '-'}</td>
-                <td>${sourcesFormatted}</td>
-                <td><span class="user-list">${s.contributors || '-'}</span></td>
-                <td>${dateStr}</td>
+                <td>${a.title}</td>
+                <td>${a.artist_name}</td>
+                <td>${a.genre||"-"}</td>
+                <td>${g}</td>
+                <td><span class="user-list">${a.contributors||"-"}</span></td>
+                <td>${r}</td>
             </tr>
-        `;
-    }).join('');
-}
-
-function selectGuild(e, id) {
-    currentGuild = id;
-    document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
-    if (e && e.currentTarget) e.currentTarget.classList.add('active');
-}
-
-function viewUser(id) { console.log('View user', id); }
-
-function control(action) {
-    if (currentGuild) {
-        fetch(`/api/guilds/${currentGuild}/control/${action}`, { method: 'POST' })
-            .then(() => setTimeout(fetchGuilds, 200));
-    }
-}
-
-function switchTab(tab) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    const tabBtn = document.querySelector(`[data-tab="${tab}"]`);
-    if (tabBtn) tabBtn.classList.add('active');
-
-    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
-    const content = document.getElementById(`tab-${tab}`);
-    if (content) content.style.display = 'block';
-
-    if (tab === 'settings') {
-        loadSettingsTab();
-    }
-}
-
-async function switchScope(scope) {
-    currentScope = scope;
-    document.querySelectorAll('.server-nav-item').forEach(el => {
-        el.classList.remove('active');
-        if (scope === 'global' && el.textContent.includes('Global')) el.classList.add('active');
-    });
-
-    fetchAnalytics();
-    fetchLibrary();
-
-    if (scope === 'global') {
-        fetchStatus();
-        switchTab('dashboard');
-        // Reset labels
-        const gLabel = document.getElementById('stat-guilds');
-        if (gLabel) gLabel.nextElementSibling.textContent = 'Servers';
-    } else {
-        try {
-            const res = await fetch(API.guild(scope));
-            const data = await res.json();
-            const gCard = document.getElementById('stat-guilds');
-            if (gCard) {
-                gCard.textContent = data.queue_size || 0;
-                gCard.nextElementSibling.textContent = 'In Queue';
-            }
-            fetchSongs();
-            switchTab('dashboard');
-        } catch (e) { console.error(e); }
-    }
-}
-
-async function loadSettingsTab() {
-    const title = document.getElementById('settings-title');
-    const globalBlock = document.getElementById('settings-global');
-    const serverBlock = document.getElementById('settings-server');
-
-    if (currentScope === 'global') {
-        if (title) title.textContent = '⚙️ Global Settings';
-        if (globalBlock) globalBlock.style.display = 'block';
-        if (serverBlock) serverBlock.style.display = 'none';
-
-        // Fetch global
-        try {
-            const res = await fetch(API.settings_global);
-            const data = await res.json();
-
-            const elMax = document.getElementById('setting-max-servers-tab');
-            if (elMax) elMax.value = data.max_concurrent_servers || '';
-
-            const elTest = document.getElementById('setting-test-mode');
-            if (elTest) elTest.checked = !!data.test_mode;
-
-            const elDur = document.getElementById('setting-test-duration');
-            if (elDur) elDur.value = data.playback_duration || 30;
-        } catch (e) {
-            console.error(e);
-        }
-    } else {
-        if (title) title.textContent = '⚙️ Server Settings';
-        if (globalBlock) globalBlock.style.display = 'none';
-        if (serverBlock) serverBlock.style.display = 'block';
-
-        // Fetch server
-        try {
-            const res = await fetch(API.settings(currentScope));
-            const data = await res.json();
-
-            const pb = document.getElementById('setting-pre-buffer');
-            if (pb) pb.checked = !!data.pre_buffer;
-
-            const ba = document.getElementById('setting-buffer-amount');
-            if (ba) {
-                ba.value = data.buffer_amount || 1;
-                const val = document.getElementById('buffer-val');
-                if (val) val.textContent = ba.value;
-            }
-
-            const md = document.getElementById('setting-max-duration');
-            if (md) md.value = data.max_song_duration || 6;
-
-            const ed = document.getElementById('setting-ephemeral-duration');
-            if (ed) ed.value = data.ephemeral_duration || 10;
-
-            // Discovery weights
-            const weights = data.discovery_weights || { similar: 25, artist: 25, wildcard: 25, library: 25 };
-            const wSimilar = document.getElementById('weight-similar');
-            if (wSimilar) wSimilar.value = weights.similar || 0;
-            const wArtist = document.getElementById('weight-artist');
-            if (wArtist) wArtist.value = weights.artist || 0;
-            const wWildcard = document.getElementById('weight-wildcard');
-            if (wWildcard) wWildcard.value = weights.wildcard || 0;
-            const wLibrary = document.getElementById('weight-library');
-            if (wLibrary) wLibrary.value = weights.library || 0;
-
-            validateWeights();
-        } catch (e) { console.error(e); }
-    }
-}
-
-async function fetchNotifications() {
-    try {
-        const res = await fetch(API.notifications);
-        const data = await res.json();
-        updateNotifications(data.notifications || []);
-    } catch (e) { console.error(e); }
-}
-
-function updateNotifications(list) {
-    const container = document.getElementById('notif-list');
-    const dot = document.getElementById('notif-dot');
-    if (!container) return;
-
-    if (list.length === 0) {
-        container.innerHTML = '<div class="notif-item" style="color: var(--text-muted); text-align: center;">No new notifications</div>';
-        if (dot) dot.style.display = 'none';
-        return;
-    }
-
-    if (dot) dot.style.display = 'block';
-    container.innerHTML = list.map(n => `
+        `}).join("");const o=Math.ceil(q.value.length/tt);t.innerHTML=`
+        <button class="page-btn" ${T.value===1?"disabled":""} onclick="changeLibraryPage(-1)">Previous</button>
+        <span class="page-info">Page ${T.value} of ${o} (${q.value.length} items)</span>
+        <button class="page-btn" ${T.value===o?"disabled":""} onclick="changeLibraryPage(1)">Next</button>
+    `}function de(e){T.value+=e,document.getElementById("library-table").scrollIntoView({behavior:"smooth",block:"start"})}function ue(e,t){$.value=t,document.querySelectorAll(".user-item").forEach(n=>n.classList.remove("active")),e&&e.currentTarget&&e.currentTarget.classList.add("active")}function fe(e){console.log("View user",e)}function ve(e){$.value&&fetch(`/api/guilds/${$.value}/control/${e}`,{method:"POST"}).then(()=>setTimeout(nt,200))}function J(e){document.querySelectorAll(".tab").forEach(i=>i.classList.remove("active"));const t=document.querySelector(`[data-tab="${e}"]`);t&&t.classList.add("active"),document.querySelectorAll(".tab-content").forEach(i=>i.style.display="none");const n=document.getElementById(`tab-${e}`);n&&(n.style.display="block"),e==="settings"&&ge()}async function st(e,t="dashboard"){if(c.value=e,e==="global"?(document.body.classList.remove("view-server"),document.body.classList.add("view-global")):(document.body.classList.remove("view-global"),document.body.classList.add("view-server")),document.querySelectorAll(".server-nav-item").forEach(n=>{var i;n.classList.remove("active"),e==="global"&&n.textContent.includes("Global")&&n.classList.add("active"),(i=n.getAttribute("onclick"))!=null&&i.includes(`'${e}'`)&&n.classList.add("active")}),e==="global"){xt(),J(t);const n=document.getElementById("stat-guilds");n&&(n.nextElementSibling.textContent="Servers")}else try{const i=await(await fetch(y.guild(e))).json(),s=document.getElementById("stat-guilds");s&&(s.textContent=i.queue_size||0,s.nextElementSibling.textContent="In Queue"),J(t)}catch(n){console.error(e,n)}}function me(){st("global","settings")}async function ge(){var i,s,o,a,r,v,g,h,U,D;const e=document.getElementById("settings-title"),t=document.getElementById("settings-global"),n=document.getElementById("settings-server");if(c.value==="global"){e&&(e.textContent="⚙️ Global Settings"),t&&(t.style.display="block"),n&&(n.style.display="none");try{const _=await(await fetch(y.settings_global)).json(),k=document.getElementById("setting-max-servers-tab");k&&(k.value=_.max_concurrent_servers||"");const b=document.getElementById("setting-test-mode");b&&(b.checked=!!_.test_mode);const w=document.getElementById("setting-test-duration");w&&(w.value=_.playback_duration||30)}catch(I){console.error(I)}}else{e&&(e.textContent="⚙️ Server Settings"),t&&(t.style.display="none"),n&&(n.style.display="block");try{const _=await(await fetch(y.settings(c.value))).json(),k=document.getElementById("setting-pre-buffer");k&&(k.checked=!!_.pre_buffer);const b=document.getElementById("setting-buffer-amount");if(b){b.value=_.buffer_amount||1;const Wt=document.getElementById("buffer-val");Wt&&(Wt.textContent=b.value)}const w=document.getElementById("setting-max-duration");w&&(w.value=_.max_song_duration||6);const P=document.getElementById("setting-ephemeral-duration");P&&(P.value=_.ephemeral_duration||10);const H=_.discovery_weights||{similar:25,artist:25,wildcard:25,library:25},A=document.getElementById("weight-similar");A&&(A.value=H.similar||0);const u=document.getElementById("weight-artist");u&&(u.value=H.artist||0);const M=document.getElementById("weight-wildcard");M&&(M.value=H.wildcard||0);const G=document.getElementById("weight-library");G&&(G.value=H.library||0),be();const j=_.metadata_config||{strategy:"fallback",engines:{spotify:{enabled:!0,priority:1},discogs:{enabled:!0,priority:2},musicbrainz:{enabled:!0,priority:3}}},Ut=document.getElementById("meta-strategy");Ut&&(Ut.value=j.strategy||"fallback");const Dt=document.getElementById("meta-discogs-enabled");Dt&&(Dt.checked=((s=(i=j.engines)==null?void 0:i.discogs)==null?void 0:s.enabled)!==!1);const Gt=document.getElementById("meta-discogs-prio");Gt&&(Gt.value=((a=(o=j.engines)==null?void 0:o.discogs)==null?void 0:a.priority)||2);const Ot=document.getElementById("meta-mb-enabled");Ot&&(Ot.checked=((v=(r=j.engines)==null?void 0:r.musicbrainz)==null?void 0:v.enabled)!==!1);const Ft=document.getElementById("meta-mb-prio");Ft&&(Ft.value=((h=(g=j.engines)==null?void 0:g.musicbrainz)==null?void 0:h.priority)||3);const zt=document.getElementById("meta-spotify-prio");zt&&(zt.value=((D=(U=j.engines)==null?void 0:U.spotify)==null?void 0:D.priority)||1)}catch(I){console.error(I)}}}async function ye(){try{const t=await(await fetch(y.notifications)).json();Nt(t.notifications||[])}catch(e){console.error(e)}}function Nt(e){const t=document.getElementById("notif-list"),n=document.getElementById("notif-dot");if(t){if(e.length===0){t.innerHTML='<div class="notif-item" style="color: var(--text-muted); text-align: center;">No new notifications</div>',n&&(n.style.display="none");return}n&&(n.style.display="block"),t.innerHTML=e.map(i=>`
         <div class="notif-item">
-            <div style="font-weight: 500; color: var(--${n.level === 'error' ? 'error' : n.level === 'warning' ? 'warning' : 'text-primary'})">${n.level.toUpperCase()}</div>
-            <div>${n.message}</div>
-            <div class="notif-time">${new Date(n.created_at * 1000).toLocaleString()}</div>
+            <div style="font-weight: 500; color: var(--${i.level==="error"?"error":i.level==="warning"?"warning":"text-primary"})">${i.level.toUpperCase()}</div>
+            <div>${i.message}</div>
+            <div class="notif-time">${new Date(i.created_at*1e3).toLocaleString()}</div>
         </div>
-    `).join('');
-}
-
-function toggleNotifications() {
-    if (dd) dd.classList.toggle('show');
-}
-
-async function saveServerSettings() {
-    if (!currentGuild) return;
-
-    const preBuffer = document.getElementById('setting-pre-buffer').checked;
-    const bufferAmount = document.getElementById('setting-buffer-amount').value;
-    const maxDuration = document.getElementById('setting-max-duration').value;
-    const ephemeralDuration = document.getElementById('setting-ephemeral-duration').value;
-
-    const weights = {
-        similar: parseInt(document.getElementById('weight-similar').value) || 0,
-        artist: parseInt(document.getElementById('weight-artist').value) || 0,
-        wildcard: parseInt(document.getElementById('weight-wildcard').value) || 0,
-        library: parseInt(document.getElementById('weight-library').value) || 0
-    };
-
-    try {
-        const res = await fetch(API.settings(currentGuild), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                pre_buffer: preBuffer,
-                buffer_amount: parseInt(bufferAmount),
-                max_song_duration: parseInt(maxDuration),
-                ephemeral_duration: parseInt(ephemeralDuration),
-                discovery_weights: weights
-            })
-        });
-
-        if (res.ok) alert('Settings saved!');
-        else alert('Failed to save settings');
-    } catch (e) {
-        console.error(e);
-        alert('Error saving settings');
-    }
-}
-
-async function saveSettingsTab() {
-    const maxServers = document.getElementById('setting-max-servers-tab').value;
-    const testMode = document.getElementById('setting-test-mode').checked;
-    const testDuration = document.getElementById('setting-test-duration').value;
-
-    try {
-        const res = await fetch(API.settings_global, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                max_concurrent_servers: maxServers ? parseInt(maxServers) : null,
-                test_mode: testMode,
-                playback_duration: testDuration ? parseInt(testDuration) : 30
-            })
-        });
-
-        if (res.ok) alert('Global settings saved!');
-        else alert('Failed to save global settings');
-    } catch (e) {
-        console.error(e);
-        alert('Error saving global settings');
-    }
-}
-
-function validateWeights() {
-    const similar = parseInt(document.getElementById('weight-similar').value) || 0;
-    const artist = parseInt(document.getElementById('weight-artist').value) || 0;
-    const wildcard = parseInt(document.getElementById('weight-wildcard').value) || 0;
-    const library = parseInt(document.getElementById('weight-library').value) || 0;
-
-    const total = similar + artist + wildcard + library;
-    const totalEl = document.getElementById('weights-total');
-    if (totalEl) {
-        totalEl.textContent = total;
-        totalEl.style.color = (total === 100) ? 'var(--text-primary)' : 'var(--warning)';
-    }
-
-    const errorEl = document.getElementById('weight-error');
-    if (errorEl) {
-        errorEl.style.display = (total === 100) ? 'none' : 'block';
-    }
-}
-
-function formatUptime(seconds) {
-    if (!seconds) return '0s';
-    const days = Math.floor(seconds / (24 * 3600));
-    seconds %= (24 * 3600);
-    const hours = Math.floor(seconds / 3600);
-    seconds %= 3600;
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-
-    let parts = [];
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
-
-    return parts.join(' ');
-}
+    `).join("")}}function pe(){dd&&dd.classList.toggle("show")}async function he(){if(!c.value||c.value==="global")return;const e=c.value,t=document.getElementById("setting-pre-buffer").checked,n=document.getElementById("setting-buffer-amount").value,i=document.getElementById("setting-max-duration").value,s=document.getElementById("setting-ephemeral-duration").value,o={similar:parseInt(document.getElementById("weight-similar").value)||0,artist:parseInt(document.getElementById("weight-artist").value)||0,wildcard:parseInt(document.getElementById("weight-wildcard").value)||0,library:parseInt(document.getElementById("weight-library").value)||0},a={strategy:document.getElementById("meta-strategy").value,engines:{spotify:{enabled:!0,priority:parseInt(document.getElementById("meta-spotify-prio").value)||1},discogs:{enabled:document.getElementById("meta-discogs-enabled").checked,priority:parseInt(document.getElementById("meta-discogs-prio").value)||2},musicbrainz:{enabled:document.getElementById("meta-mb-enabled").checked,priority:parseInt(document.getElementById("meta-mb-prio").value)||3}}};try{(await fetch(y.settings(e),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pre_buffer:t,buffer_amount:parseInt(n),max_song_duration:parseInt(i),ephemeral_duration:parseInt(s),discovery_weights:o,metadata_config:a})})).ok?alert("Settings saved!"):alert("Failed to save settings")}catch(r){console.error(r),alert("Error saving settings")}}async function _e(){const e=document.getElementById("setting-max-servers-tab").value,t=document.getElementById("setting-test-mode").checked,n=document.getElementById("setting-test-duration").value;try{(await fetch(y.settings_global,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_concurrent_servers:e?parseInt(e):null,test_mode:t,playback_duration:n?parseInt(n):30})})).ok?alert("Global settings saved!"):alert("Failed to save global settings")}catch(i){console.error(i),alert("Error saving global settings")}}function be(){const e=parseInt(document.getElementById("weight-similar").value)||0,t=parseInt(document.getElementById("weight-artist").value)||0,n=parseInt(document.getElementById("weight-wildcard").value)||0,i=parseInt(document.getElementById("weight-library").value)||0,s=e+t+n+i,o=document.getElementById("weights-total");o&&(o.textContent=s,o.style.color=s===100?"var(--text-primary)":"var(--warning)");const a=document.getElementById("weight-error");a&&(a.style.display=s===100?"none":"block")}function qt(e){if(!e)return"0s";const t=Math.floor(e/(24*3600));e%=24*3600;const n=Math.floor(e/3600);e%=3600;const i=Math.floor(e/60),s=e%60;let o=[];return t>0&&o.push(`${t}d`),n>0&&o.push(`${n}h`),i>0&&o.push(`${i}m`),(s>0||o.length===0)&&o.push(`${s}s`),o.join(" ")}Object.assign(window,{switchTab:J,switchScope:st,control:ve,changeLibraryPage:de,selectGuild:ue,leaveGuild:se,leaveServer:oe,saveServerSettings:he,saveSettingsTab:_e,toggleNotifications:pe,viewUser:fe,openGlobalSettings:me,initCharts:Ht,updateCharts:At})})();

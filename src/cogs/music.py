@@ -5,13 +5,15 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, UTC
-from typing import Optional
-
+from typing import Optional, List
+from collections import Counter
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from src.services.youtube import YouTubeService, YTTrack
+from src.services.discogs import DiscogsService
+from src.services.musicbrainz import MusicBrainzService
 from src.database.crud import SongCRUD, UserCRUD, PlaybackCRUD, ReactionCRUD, GuildCRUD, AnalyticsCRUD
 
 logger = logging.getLogger(__name__)
@@ -196,6 +198,8 @@ class MusicCog(commands.Cog):
         self.bot = bot
         self.players: dict[int, GuildPlayer] = {}
         self.youtube = YouTubeService()
+        self.discogs = DiscogsService()
+        self.musicbrainz = MusicBrainzService()
         self._idle_check_task: asyncio.Task | None = None
     
     async def cog_load(self):
@@ -211,9 +215,17 @@ class MusicCog(commands.Cog):
         # Disconnect from all voice channels
         for player in list(self.players.values()):
             if player.voice_client:
+                # Stop playing immediately to kill ffmpeg
+                if player.voice_client.is_playing() or player.voice_client.is_paused():
+                    player.voice_client.stop()
+                
                 # End session before disconnect
                 await self._end_session(player)
-                await player.voice_client.disconnect(force=True)
+                
+                try:
+                    await player.voice_client.disconnect(force=True)
+                except Exception:
+                    pass
         
         logger.info("Music cog unloaded")
     
@@ -284,6 +296,10 @@ class MusicCog(commands.Cog):
             from src.database.crud import GuildCRUD
             guild_crud = GuildCRUD(self.bot.db)
             max_duration = await guild_crud.get_setting(interaction.guild_id, "max_song_duration")
+            
+            # Default to 6 minutes if not set
+            if max_duration is None:
+                max_duration = "6"
             
             if max_duration and track.duration_seconds:
                 try:
@@ -411,6 +427,11 @@ class MusicCog(commands.Cog):
         if guild_crud:
             try:
                 max_dur = await guild_crud.get_setting(interaction.guild_id, "max_song_duration")
+                
+                # Default to 6 minutes if not set
+                if max_dur is None:
+                    max_dur = "6"
+                    
                 if max_dur:
                     max_seconds = int(max_dur) * 60
             except (ValueError, TypeError):
@@ -746,39 +767,12 @@ class MusicCog(commands.Cog):
                             if not is_ephemeral and song.get("is_ephemeral"):
                                 await song_crud.make_permanent(song["id"])
                         
-                        # Metadata Enrichment Logic (Prioritizing Spotify for accuracy)
-                        spotify = getattr(self.bot, "spotify", None)
-                        if spotify:
-                            try:
-                                # Always attempt Spotify lookup for better Genre/Year quality
-                                query = f"{item.artist} {item.title}"
-                                sp_track = await spotify.search_track(query)
-                                if sp_track:
-                                    # Spotify is the source of truth for year and genre
-                                    item.year = sp_track.release_year
-                                    
-                                    # Get precise genres from Spotify Artist
-                                    artist = await spotify.get_artist(sp_track.artist_id)
-                                    if artist and artist.genres:
-                                        # Use primary genre
-                                        item.genre = artist.genres[0].title()
-                                        
-                                        # Clear old/wrong genres and save confirmed one to DB
-                                        if item.song_db_id:
-                                            await song_crud.clear_genres(item.song_db_id)
-                                            await song_crud.add_genre(item.song_db_id, item.genre)
-                                    
-                                    # Sync back to main song table
-                                    if item.song_db_id:
-                                        await song_crud.get_or_create_by_yt_id(
-                                            canonical_yt_id=item.video_id,
-                                            title=item.title,
-                                            artist_name=item.artist,
-                                            release_year=item.year,
-                                            duration_seconds=item.duration_seconds
-                                        )
-                            except Exception as e:
-                                logger.debug(f"Spotify enrichment failed: {e}")
+                        # Metadata Enrichment Logic (Configurable)
+                        metadata_config = None
+                        if hasattr(self.bot, "db") and self.bot.db:
+                            metadata_config = await guild_crud.get_setting(player.guild_id, "metadata_config")
+                        
+                        await self._resolve_metadata(item, metadata_config)
                         
                         # Fallback: Populate from DB if Spotify failed or was unavailable
                         if (not item.year or not item.genre) and item.song_db_id:
@@ -1177,6 +1171,11 @@ class MusicCog(commands.Cog):
                         from src.database.crud import GuildCRUD
                         guild_crud = GuildCRUD(self.bot.db)
                         max_dur = await guild_crud.get_setting(player.guild_id, "max_song_duration")
+                        
+                        # Default to 6 minutes if not set
+                        if max_dur is None:
+                            max_dur = "6"
+                            
                         if max_dur:
                             max_seconds = int(max_dur) * 60
                     except: pass
@@ -1214,6 +1213,33 @@ class MusicCog(commands.Cog):
                     if url:
                         next_item.url = url
                         logger.debug(f"Gapless Pre-fetch: Prepared URL for: {next_item.title}")
+                        
+                        # Pre-resolve metadata to avoid gaps later
+                        try:
+                            # Ensure song exists in DB so we can save the genre
+                            if not next_item.song_db_id:
+                                from src.database.crud import SongCRUD
+                                song_crud = SongCRUD(self.bot.db)
+                                # Create or get existing
+                                song = await song_crud.get_or_create_by_yt_id(
+                                    canonical_yt_id=next_item.video_id,
+                                    title=next_item.title,
+                                    artist_name=next_item.artist,
+                                    duration_seconds=next_item.duration_seconds
+                                )
+                                next_item.song_db_id = song["id"]
+
+                            # We need config
+                            metadata_config = None
+                            if hasattr(self.bot, "db") and self.bot.db:
+                                from src.database.crud import GuildCRUD
+                                guild_crud = GuildCRUD(self.bot.db)
+                                metadata_config = await guild_crud.get_setting(player.guild_id, "metadata_config")
+                            
+                            await self._resolve_metadata(next_item, metadata_config)
+                            logger.debug(f"Gapless Pre-fetch: Resolved metadata for: {next_item.title}")
+                        except Exception as e:
+                            logger.warning(f"Gapless Pre-fetch metadata failed: {e}")
                     
         except Exception as e:
             logger.debug(f"Song preparation failed: {e}")
@@ -1231,78 +1257,80 @@ class MusicCog(commands.Cog):
             return
 
         try:
-            playback_crud = PlaybackCRUD(self.bot.db)
-            analytics_crud = AnalyticsCRUD(self.bot.db)
-            
-            # 1. End in DB
-            await playback_crud.end_session(session_id)
-            
-            # 2. Get Stats for Recap
-            stats = await analytics_crud.get_session_stats(session_id)
-            
-            # 3. Send Recap Embed
-            if player.text_channel_id:
-                channel = self.bot.get_channel(player.text_channel_id)
-                if channel:
-                    embed = discord.Embed(
-                        title="🏁 Session Recap",
-                        description=f"This music session has concluded.",
-                        color=discord.Color.from_rgb(124, 58, 237)
-                    )
-                    
-                    # Formatting stats
-                    total_tracks = stats.get("total_tracks", 0)
-                    if total_tracks > 0:
-                        total_secs = stats.get("total_seconds") or 0
-                        mins, secs = divmod(total_secs, 60)
-                        hours, mins = divmod(mins, 60)
+            async with asyncio.timeout(5):
+                playback_crud = PlaybackCRUD(self.bot.db)
+                analytics_crud = AnalyticsCRUD(self.bot.db)
+                
+                # 1. End in DB
+                await playback_crud.end_session(session_id)
+                
+                # 2. Get Stats for Recap
+                stats = await analytics_crud.get_session_stats(session_id)
+                
+                # 3. Send Recap Embed
+                if player.text_channel_id:
+                    channel = self.bot.get_channel(player.text_channel_id)
+                    if channel:
+                        embed = discord.Embed(
+                            title="🏁 Session Recap",
+                            description=f"This music session has concluded.",
+                            color=discord.Color.from_rgb(124, 58, 237)
+                        )
                         
-                        duration_str = f"{secs}s"
-                        if mins > 0: duration_str = f"{mins}m {duration_str}"
-                        if hours > 0: duration_str = f"{hours}h {duration_str}"
-                        
-                        embed.add_field(name="📊 Stats", value=f"**{total_tracks}** tracks played\n**{duration_str}** total time", inline=True)
-                        embed.add_field(name="👥 Listeners", value=f"**{stats.get('unique_listeners', 0)}** unique users", inline=True)
-                        
-                        if stats.get("top_artist"):
-                            embed.add_field(name="🎤 Top Artist", value=stats["top_artist"], inline=True)
-                        
-                        if stats.get("top_genre"):
-                            embed.add_field(name="🏷️ Top Genre", value=stats["top_genre"], inline=True)
-                        
-                        # Discovery breakdown
-                        breakdown = stats.get("discovery_breakdown", {})
-                        if breakdown:
-                            requested = breakdown.get("user_request", 0)
-                            discovered = sum(v for k, v in breakdown.items() if k != "user_request")
-                            total = requested + discovered
-                            if total > 0:
-                                req_pct = round((requested / total) * 100)
-                                disc_pct = 100 - req_pct
-                                embed.add_field(
-                                    name="✨ Discovery Rate", 
-                                    value=f"🙋 {req_pct}% Requests\n🎲 {disc_pct}% Autoplay", 
-                                    inline=False
-                                )
-                    else:
-                        embed.description = "No tracks were played during this session."
+                        # Formatting stats
+                        total_tracks = stats.get("total_tracks", 0)
+                        if total_tracks > 0:
+                            total_secs = stats.get("total_seconds") or 0
+                            mins, secs = divmod(total_secs, 60)
+                            hours, mins = divmod(mins, 60)
+                            
+                            duration_str = f"{secs}s"
+                            if mins > 0: duration_str = f"{mins}m {duration_str}"
+                            if hours > 0: duration_str = f"{hours}h {duration_str}"
+                            
+                            embed.add_field(name="📊 Stats", value=f"**{total_tracks}** tracks played\n**{duration_str}** total time", inline=True)
+                            embed.add_field(name="👥 Listeners", value=f"**{stats.get('unique_listeners', 0)}** unique users", inline=True)
+                            
+                            if stats.get("top_artist"):
+                                embed.add_field(name="🎤 Top Artist", value=stats["top_artist"], inline=True)
+                            
+                            if stats.get("top_genre"):
+                                embed.add_field(name="🏷️ Top Genre", value=stats["top_genre"], inline=True)
+                            
+                            # Discovery breakdown
+                            breakdown = stats.get("discovery_breakdown", {})
+                            if breakdown:
+                                requested = breakdown.get("user_request", 0)
+                                discovered = sum(v for k, v in breakdown.items() if k != "user_request")
+                                total = requested + discovered
+                                if total > 0:
+                                    req_pct = round((requested / total) * 100)
+                                    disc_pct = 100 - req_pct
+                                    embed.add_field(
+                                        name="✨ Discovery Rate", 
+                                        value=f"🙋 {req_pct}% Requests\n🎲 {disc_pct}% Autoplay", 
+                                        inline=False
+                                    )
+                        else:
+                            embed.description = "No tracks were played during this session."
 
-                    embed.set_footer(text="Vexo Music • Quality Audio Discovery")
-                    embed.timestamp = datetime.now(UTC)
+                        embed.set_footer(text="Vexo Music • Quality Audio Discovery")
+                        embed.timestamp = datetime.now(UTC)
 
-                    # Update Now Playing message if possible, else send new
-                    updated = False
-                    if player.last_np_msg:
-                        try:
-                            await player.last_np_msg.edit(embed=embed, view=SessionEndedView(self, player.guild_id))
-                            updated = True
-                        except: pass
-                    
-                    if not updated:
-                        await channel.send(embed=embed, view=SessionEndedView(self, player.guild_id))
-                    
-                    player.last_np_msg = None
-
+                        # Update Now Playing message if possible, else send new
+                        updated = False
+                        if player.last_np_msg:
+                            try:
+                                await player.last_np_msg.edit(embed=embed, view=SessionEndedView(self, player.guild_id))
+                                updated = True
+                            except: pass
+                        
+                        if not updated:
+                            await channel.send(embed=embed, view=SessionEndedView(self, player.guild_id))
+                        
+                        player.last_np_msg = None
+        except TimeoutError:
+            logger.warning(f"Session end processing timed out for guild {player.guild_id}")
         except Exception as e:
             logger.error(f"Failed to generate session recap: {e}")
 
@@ -1462,7 +1490,161 @@ class MusicCog(commands.Cog):
                 player.voice_client = None
                 logger.info(f"Disconnected from {member.guild.name} - everyone left")
 
+    async def _resolve_metadata(self, item: QueueItem, config: dict | None):
+        """
+        Resolve metadata (Genre/Year) using configured strategies (Fallback or Consensus).
+        """
+        # Optimize: Return early if metadata is already present
+        if item.genre and item.year:
+            logger.debug(f"Skipping metadata resolution for '{item.title}' - already has Genre: {item.genre}, Year: {item.year}")
+            return
 
+        logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}'. Config: {config}")
+
+        # Default Config
+        if not config:
+            config = {
+                "strategy": "fallback",
+                "engines": {
+                    "spotify": {"enabled": True, "priority": 1},
+                    "discogs": {"enabled": True, "priority": 2},
+                    "musicbrainz": {"enabled": True, "priority": 3}
+                }
+            }
+        
+        strategy = config.get("strategy", "fallback")
+        engines = config.get("engines", {})
+        
+        # Sort enabled engines by priority
+        active_engines = []
+        for name, settings in engines.items():
+            if settings.get("enabled", True):
+                active_engines.append((name, settings.get("priority", 99)))
+        
+        active_engines.sort(key=lambda x: x[1]) # Sort by priority
+        
+        logger.info(f"Resolving metadata for '{item.title}' using {strategy} strategy with {[e[0] for e in active_engines]}")
+
+        # --- Helper Functions ---
+        async def fetch_spotify():
+            spotify = getattr(self.bot, "spotify", None)
+            if not spotify: return []
+            try:
+                query = f"{item.artist} {item.title}"
+                sp_track = await spotify.search_track(query)
+                if sp_track:
+                    # Update year if found
+                    if sp_track.release_year:
+                        item.year = sp_track.release_year
+                    
+                    artist = await spotify.get_artist(sp_track.artist_id)
+                    if artist and artist.genres:
+                        return artist.genres  # Return list
+            except Exception as e:
+                logger.error(f"Spotify fetch failed: {e}")
+            return []
+
+        async def fetch_discogs():
+            if not hasattr(self, "discogs"): return []
+            try:
+                genres = await self.discogs.get_genre(item.artist, item.title)
+                return genres if genres else []
+            except Exception as e:
+                logger.error(f"Discogs fetch failed: {e}")
+            return []
+
+        async def fetch_musicbrainz():
+            if not hasattr(self, "musicbrainz"): return []
+            try:
+                genres = await self.bot.loop.run_in_executor(
+                    None, self.musicbrainz.get_genre, item.artist, item.title
+                )
+                return genres if genres else []
+            except Exception as e:
+                logger.error(f"MusicBrainz fetch failed: {e}")
+            return []
+
+        engine_map = {
+            "spotify": fetch_spotify,
+            "discogs": fetch_discogs,
+            "musicbrainz": fetch_musicbrainz
+        }
+
+        found_genre = None
+
+        if strategy == "consensus":
+            # Parallel execution
+            tasks = []
+            param_map = []
+            
+            for name, _ in active_engines:
+                if name in engine_map:
+                    tasks.append(engine_map[name]())
+                    param_map.append(name)
+            
+            if tasks:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                votes = Counter()
+                for i, res in enumerate(results):
+                    if isinstance(res, Exception):
+                        logger.warning(f"Engine {param_map[i]} failed: {res}")
+                        continue
+                    if not res:
+                        logger.info(f"Engine {param_map[i]} voted for: None (No result)")
+                        continue
+                        
+                    # Normalize simple genres for better consensus
+                    # res is now a list of strings
+                    engine_votes = []
+                    for g in res:
+                        normalized = str(g).title()
+                        votes[normalized] += 1
+                        engine_votes.append(normalized)
+                    
+                    logger.info(f"Engine {param_map[i]} voted for: {engine_votes}")
+                
+                if votes:
+                    # Get most common
+                    winner, count = votes.most_common(1)[0]
+                    found_genre = winner
+                    logger.info(f"Consensus winner: {found_genre} ({count} votes)")
+                else:
+                    logger.info("No consensus reached (no results)")
+
+        else: # Fallback Strategy
+            for name, _ in active_engines:
+                if item.genre: break # Already found (e.g. from previous loop if re-running)
+                
+                if name in engine_map:
+                    logger.info(f"Trying engine: {name}...")
+                    res = await engine_map[name]()
+                    if res:
+                        found_genre = res
+                        logger.info(f"Found genre via {name}: {found_genre}")
+                        break
+        
+        # Apply result
+        if found_genre:
+            item.genre = found_genre
+            
+            # Save to DB
+            if item.song_db_id and hasattr(self.bot, "db"):
+                try:
+                    from src.database.crud import SongCRUD
+                    song_crud = SongCRUD(self.bot.db)
+                    await song_crud.clear_genres(item.song_db_id)
+                    await song_crud.add_genre(item.song_db_id, item.genre)
+                    # Sync year if it was updated by spotify side-effect
+                    if item.year:
+                         await song_crud.get_or_create_by_yt_id(
+                            canonical_yt_id=item.video_id,
+                            title=item.title,
+                            artist_name=item.artist,
+                            release_year=item.year
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to save resolved metadata: {e}")
 
 class SessionEndedView(discord.ui.View):
     """View shown when a playback session has ended."""
@@ -1523,3 +1705,4 @@ class SessionEndedView(discord.ui.View):
 async def setup(bot: commands.Bot):
     """Load the music cog."""
     await bot.add_cog(MusicCog(bot))
+

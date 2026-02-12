@@ -3,6 +3,7 @@ Smart Discord Music Bot - Main Entry Point
 """
 import asyncio
 import logging
+import os
 import signal
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+logging.getLogger("musicbrainzngs").setLevel(logging.WARNING)
 logger = logging.getLogger("bot")
 
 
@@ -179,14 +181,34 @@ class MusicBot(commands.Bot):
         """Cleanup when the bot is shutting down."""
         logger.info("Shutting down...")
         
-        # Disconnect from all voice channels
+        # Explicitly unload music cog to ensure proper cleanup (stops FFMPEG)
+        try:
+            await self.unload_extension("src.cogs.music")
+        except Exception:
+            pass
+
+        # Explicitly unload dashboard cog to close websockets
+        try:
+            await self.unload_extension("src.cogs.dashboard")
+        except Exception:
+            pass
+
+        # Disconnect from all voice channels (cleanup for any remaining)
         for vc in self.voice_clients:
             try:
                 await vc.disconnect(force=True)
             except Exception:
                 pass
         
+        # Close database
+        if self.db:
+            try:
+                await self.db.close()
+            except Exception:
+                pass
+
         await super().close()
+        logger.info("Shutdown complete.")
 
 
 async def main():
@@ -195,28 +217,28 @@ async def main():
     
     bot = MusicBot()
     
-    # Handle shutdown signals
-    loop = asyncio.get_event_loop()
+    # asyncio.run handles signals on its own, and Windows doesn't support loop.add_signal_handler
+    # for SIGINT. Removing manual signal logic to prevent conflicts with KeyboardInterrupt.
+
     
-    def signal_handler():
-        logger.info("Received shutdown signal")
-        asyncio.create_task(bot.close())
-    
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    async with bot:
         try:
-            loop.add_signal_handler(sig, signal_handler)
-        except NotImplementedError:
-            # Windows doesn't support add_signal_handler
-            pass
-    
-    try:
-        await bot.start(config.DISCORD_TOKEN)
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received")
-    finally:
-        if not bot.is_closed():
-            await bot.close()
+            await bot.start(config.DISCORD_TOKEN)
+        except KeyboardInterrupt:
+            logger.info("Shutdown initiated by user...")
+        except Exception as e:
+            logger.error(f"Bot error: {e}")
+        finally:
+            if not bot.is_closed():
+                await bot.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # standard exit
+        os._exit(0)
+    except Exception as e:
+        logger.critical(f"Fatal error: {e}")
+        os._exit(1)

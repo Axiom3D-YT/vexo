@@ -143,6 +143,19 @@ class SettingsCog(commands.Cog):
                 inline=True
             )
             
+            # Max Song Duration
+            max_dur = all_settings.get("max_song_duration")
+            if max_dur:
+                dur_text = f"{max_dur} mins"
+            else:
+                dur_text = "6 mins (Default)"
+                
+            embed.add_field(
+                name="⏱️ Max Duration",
+                value=dur_text,
+                inline=True
+            )
+
             # Ephemeral Duration
             ephemeral_dur = all_settings.get("ephemeral_duration", 10)
             embed.add_field(

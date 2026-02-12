@@ -843,10 +843,64 @@ class AnalyticsCRUD:
             GROUP BY discovery_source
         """
         discovery = await self.db.fetch_all(query_discovery, (session_id,))
-        stats["discovery_breakdown"] = {row["discovery_source"]: row["count"] for row in discovery}
-        
         return stats
 
+    async def get_playback_trends(self, days: int = 7, guild_id: int = None) -> list[int]:
+        """Get number of plays per day for the last N days."""
+        params = []
+        where_clause = ""
+        if guild_id:
+            where_clause = "AND ps.guild_id = ?"
+            params.append(guild_id)
+            
+        query = f"""
+            SELECT date(ph.played_at) as day, COUNT(*) as count
+            FROM playback_history ph
+            JOIN playback_sessions ps ON ph.session_id = ps.id
+            WHERE ph.played_at > date('now', ?)
+            {where_clause}
+            GROUP BY day
+            ORDER BY day ASC
+        """
+        params.insert(0, f"-{days} days")
+        
+        rows = await self.db.fetch_all(query, tuple(params))
+        
+        # Fill gaps with zeros for missing days
+        from datetime import datetime, timedelta
+        history = {row["day"]: row["count"] for row in rows}
+        result = []
+        for i in range(days):
+            d = (datetime.now(UTC) - timedelta(days=days-1-i)).strftime("%Y-%m-%d")
+            result.append(history.get(d, 0))
+        return result
+
+
+    async def get_peak_hours(self, days: int = 30, guild_id: int = None) -> list[int]:
+        """Get number of plays per hour of the day (0-23) for the last N days."""
+        params = []
+        where_clause = ""
+        if guild_id:
+            where_clause = "AND ps.guild_id = ?"
+            params.append(guild_id)
+            
+        # SQLite stores dates as strings, use strftime to get hour
+        query = f"""
+            SELECT strftime('%H', ph.played_at) as hour, COUNT(*) as count
+            FROM playback_history ph
+            JOIN playback_sessions ps ON ph.session_id = ps.id
+            WHERE ph.played_at > date('now', ?)
+            {where_clause}
+            GROUP BY hour
+            ORDER BY hour ASC
+        """
+        params.insert(0, f"-{days} days")
+        
+        rows = await self.db.fetch_all(query, tuple(params))
+        
+        # Fill all 24 hours
+        hours = {int(row["hour"]): row["count"] for row in rows if row["hour"]}
+        return [hours.get(h, 0) for h in range(24)]
 
 class LibraryCRUD:
     """CRUD operations for the unified song library."""

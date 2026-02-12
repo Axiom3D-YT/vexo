@@ -1,132 +1,70 @@
-# Smart Discord Music Bot
+# 🌌 Vexo - Smart Discord Music Bot
 
-A self-hosted Discord music bot that learns your preferences and discovers music you'll love.
+Vexo is a self-hosted Discord music bot designed for discovery and democratic listening. It doesn't just play music; it learns what your server loves and helps you find the next great track.
 
-## ✨ Features
+## 🚀 The Vision
+Vexo is evolving toward a **modern, reactive web-based interface**. While the bot remains highly functional via Discord slash commands, our roadmap focuses on a seamless, real-time dashboard for managing queues, viewing detailed music analytics, and configuring discovery engines without leaving your browser.
 
-- **🎵 High-Quality Audio** - Direct Opus passthrough with FFmpegOpusAudio
-- **🧠 Smart Discovery** - Three strategies: Similar songs, Same artist, Wildcard (charts)
-- **👥 Democratic Selection** - Turn-based song picking for fair listening in voice channels
-- **📥 Playlist Import** - Import from Spotify and YouTube to learn preferences
-- **❤️ Reaction Learning** - Likes boost preferences, dislikes reduce them (skips don't count!)
-- **🔒 Privacy Controls** - Export, delete, and opt-out of data tracking
-- **📊 Web Dashboard** - Live stats and logs (localhost only)
+## 🧠 Metadata & Discovery Strategy
+Vexo employs a multi-layered metadata strategy to ensure every song has its context:
+- **Primary Heuristics**: Extracts metadata directly from YouTube/Spotify streams.
+- **Discogs Integration**: Used as the primary fallback for genre and artist attribution when primary sources are ambiguous.
+- **MusicBrainz Fallback**: An additional layer for deep-catalog metadata.
 
-## 🚀 Quick Start
+### Discovery Engines
+- **Similar Song (60%)**: Finds tracks with matching genres and vibes to your liked history.
+- **Same Artist (10%)**: Surfacing deeper cuts from your favorite creators.
+- **Wildcard (30%)**: Keeping things fresh with curated global charts.
+
+---
+
+## ✨ Key Features
+- **🎵 High-Quality Audio** - Optimized Opus passthrough for crystal-clear sound.
+- **👥 Democratic Selection** - Intelligent turn-based queue management.
+- **❤️ Reaction Learning** - Likes directly influence the discovery engine's future suggestions.
+- **📊 Live Dashboard** - Real-time statistics and system logs.
+
+## 🛠️ Setup & Deployment
 
 ### 1. Prerequisites
-
 - Python 3.11+
 - FFmpeg
 - Discord Bot Token
-- Spotify API credentials
+- Spotify API Credentials (Client ID & Secret)
+- Discogs Token (Highly Recommended for Discovery)
 
-### 2. Setup
-
+### 2. Local Installation
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/smart-music-bot.git
-cd smart-music-bot
-
-# Create virtual environment
+git clone https://github.com/Axiom3D-YT/vexo.git
+cd vexo
 python -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
 cp .env.example .env
-# Edit .env with your API keys
-```
-
-### 3. Run
-
-```bash
+# Edit .env with your credentials
 python -m src.bot
 ```
 
-## 🐳 Docker Deployment
-
+### 3. Docker (Recommended)
 ```bash
-# Build and run
 docker-compose up -d
-
-# View logs
-docker-compose logs -f
 ```
 
-The web dashboard is available at `http://localhost:8080` (localhost only, no auth).
+---
 
-## 📋 Commands
+## 📋 Commands & Usage
 
-### Music
-| Command | Description |
-|---------|-------------|
-| `/play song <query>` | Search and play a song |
-| `/play any` | Start discovery mode |
-| `/pause` | Pause playback |
-| `/resume` | Resume playback |
-| `/skip` | Vote to skip |
-| `/queue` | Show the queue |
-| `/nowplaying` | Show current song with discovery info |
+| Category | Commands |
+|----------|----------|
+| **Music** | `/play`, `/play any`, `/pause`, `/resume`, `/skip`, `/queue`, `/nowplaying` |
+| **Learning** | `/like`, `/dislike`, `/preferences`, `/import <spotify_url>` |
+| **Settings** | `/settings show`, `/settings discovery_weights`, `/dj @role` |
+| **Privacy** | `/privacy export`, `/privacy delete`, `/privacy optout` |
 
-### Preferences
-| Command | Description |
-|---------|-------------|
-| `/like` | Like the current song |
-| `/dislike` | Dislike the current song |
-| `/preferences` | View your music preferences |
-| `/import <url>` | Import Spotify/YouTube playlist |
+---
 
-### Privacy
-| Command | Description |
-|---------|-------------|
-| `/privacy export` | Export all your data |
-| `/privacy delete` | Delete all your data |
-| `/privacy optout` | Opt out of preference tracking |
-| `/privacy optin` | Re-enable preference tracking |
-
-### Settings (Admin)
-| Command | Description |
-|---------|-------------|
-| `/settings prebuffer <on/off>` | Toggle pre-buffering |
-| `/settings discovery_weights` | Set strategy weights |
-| `/settings show` | View current settings |
-| `/dj @role` | Set DJ role |
-| `/forceskip` | Force skip without voting |
-| `/clear` | Clear the queue |
-
-## ⚙️ Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DISCORD_TOKEN` | Discord bot token | Required |
-| `SPOTIFY_CLIENT_ID` | Spotify client ID | Required |
-| `SPOTIFY_CLIENT_SECRET` | Spotify client secret | Required |
-| `DATABASE_PATH` | SQLite database path | `./data/musicbot.db` |
-| `WEB_HOST` | Dashboard host | `127.0.0.1` |
-| `WEB_PORT` | Dashboard port | `8080` |
-| `YTDL_COOKIES_PATH` | Path to YouTube cookies | Optional |
-
-## 🎲 Discovery Strategies
-
-The bot uses three weighted strategies to find songs:
-
-1. **Similar Song (60%)** - Finds songs similar to ones you've liked
-2. **Same Artist (10%)** - Picks a different song from an artist you enjoy
-3. **Wildcard (30%)** - Random pick from current charts
-
-Weights are configurable per server with `/settings discovery_weights`.
-
-## 🔒 Privacy
-
-- All data stored locally in SQLite
-- Users can export or delete their data anytime
-- Opt-out stops all preference tracking
-- Web dashboard is localhost-only with no authentication
-- Skipping does NOT count as a dislike
+## 🤝 Contributing
+We welcome contributions to the Vexo ecosystem! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for our coding standards and guidelines for the new Web UI.
 
 ## 📝 License
-
-MIT License - see LICENSE file for details.
+Vexo is released under the MIT License. See [LICENSE](LICENSE) for details.

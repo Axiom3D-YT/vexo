@@ -86,6 +86,15 @@ class WebSocketManager:
                 disconnected.add(ws)
         self.clients -= disconnected
 
+    async def close_all(self):
+        """Close all active websocket connections."""
+        for ws in list(self.clients):
+            try:
+                await ws.close(code=1001, message=b"Server shutting down")
+            except Exception:
+                pass
+        self.clients.clear()
+
 
 class DashboardCog(commands.Cog):
     """Web dashboard for stats and analytics."""
@@ -117,6 +126,10 @@ class DashboardCog(commands.Cog):
     async def cog_unload(self):
         if self._log_handler:
             logging.getLogger().removeHandler(self._log_handler)
+        
+        # Close websockets first
+        await self.ws_manager.close_all()
+
         if self.runner:
             await self.runner.cleanup()
     
@@ -147,6 +160,7 @@ class DashboardCog(commands.Cog):
         self.app.router.add_post("/api/settings/global", self._handle_global_settings)
         self.app.router.add_get("/api/notifications", self._handle_notifications)
         self.app.router.add_post("/api/guilds/{guild_id}/leave", self._handle_leave_guild)
+        self.app.router.add_get("/api/dashboard-init", self._handle_dashboard_init)
     
     async def _handle_index(self, request: web.Request) -> web.Response:
         html_file = TEMPLATE_DIR / "index.html"
@@ -154,10 +168,10 @@ class DashboardCog(commands.Cog):
             return web.Response(text=html_file.read_text(encoding='utf-8'), content_type="text/html")
         return web.Response(text="Dashboard template not found", status=404)
     
-    async def _handle_status(self, request: web.Request) -> web.Response:
+    async def _get_status_data(self):
         import psutil
         process = psutil.Process()
-        return web.json_response({
+        return {
             "status": "online",
             "guilds": len(self.bot.guilds),
             "voice_connections": len(self.bot.voice_clients),
@@ -166,18 +180,37 @@ class DashboardCog(commands.Cog):
             "ram_percent": psutil.virtual_memory().percent,
             "process_ram_mb": round(process.memory_info().rss / 1024 / 1024, 2),
             "uptime_seconds": int((datetime.now(UTC) - self.bot.start_time).total_seconds())
-        })
+        }
+
+    async def _handle_status(self, request: web.Request) -> web.Response:
+        data = await self._get_status_data()
+        return web.json_response(data)
     
-    async def _handle_guilds(self, request: web.Request) -> web.Response:
+    async def _get_guilds_data(self):
         music = self.bot.get_cog("MusicCog")
         guilds = []
         for guild in self.bot.guilds:
             player = music.get_player(guild.id) if music else None
+            # Queue stats
+            queue_size = 0
+            queue_duration = 0
+            if player:
+                queue_size = player.queue.qsize()
+                total_secs = 0
+                for _, _, item in list(player.queue._queue):
+                    if hasattr(item, 'duration_seconds') and item.duration_seconds:
+                        total_secs += item.duration_seconds
+                if player.current and player.current.duration_seconds:
+                    total_secs += player.current.duration_seconds
+                queue_duration = round(total_secs / 60, 1)
+
             data = {
                 "id": str(guild.id),
                 "name": guild.name,
                 "member_count": guild.member_count,
                 "is_playing": bool(player and player.is_playing),
+                "queue_size": queue_size,
+                "queue_duration": queue_duration
             }
             if player and player.current:
                 data["current_song"] = player.current.title
@@ -191,7 +224,11 @@ class DashboardCog(commands.Cog):
                     user = self.bot.get_user(player.current.for_user_id)
                     data["for_user"] = user.display_name if user else str(player.current.for_user_id)
             guilds.append(data)
-        return web.json_response({"guilds": guilds})
+        return {"guilds": guilds}
+
+    async def _handle_guilds(self, request: web.Request) -> web.Response:
+        data = await self._get_guilds_data()
+        return web.json_response(data)
     
     async def _handle_guild_detail(self, request: web.Request) -> web.Response:
         guild_id = int(request.match_info["guild_id"])
@@ -202,11 +239,30 @@ class DashboardCog(commands.Cog):
         music = self.bot.get_cog("MusicCog")
         player = music.get_player(guild_id) if music else None
         
+        queue_size = 0
+        queue_duration_mins = 0
+        if player:
+            queue_size = player.queue.qsize()
+            # Calculate total duration of remaining songs in queue
+            total_seconds = 0
+            # PriorityQueue doesn't allow direct iteration easily without consuming
+            # but we can look at the internal _queue list
+            for _, _, item in list(player.queue._queue):
+                if hasattr(item, 'duration_seconds') and item.duration_seconds:
+                    total_seconds += item.duration_seconds
+            
+            # Add current song duration if any
+            if player.current and player.current.duration_seconds:
+                 total_seconds += player.current.duration_seconds
+                 
+            queue_duration_mins = round(total_seconds / 60, 1)
+
         return web.json_response({
             "id": str(guild.id),
             "name": guild.name,
             "member_count": guild.member_count,
-            "queue_size": player.queue.qsize() if player else 0,
+            "queue_size": queue_size,
+            "queue_duration": queue_duration_mins
         })
     
     async def _handle_guild_settings(self, request: web.Request) -> web.Response:
@@ -226,6 +282,11 @@ class DashboardCog(commands.Cog):
             from src.database.crud import GuildCRUD
             crud = GuildCRUD(self.bot.db)
             
+            # Ensure guild exists in DB to prevent Foreign Key errors
+            guild = self.bot.get_guild(guild_id)
+            guild_name = guild.name if guild else f"Guild {guild_id}"
+            await crud.get_or_create(guild_id, guild_name)
+            
             # Save settings
             if "pre_buffer" in data:
                 await crud.set_setting(guild_id, "pre_buffer", str(data["pre_buffer"]).lower())
@@ -239,6 +300,9 @@ class DashboardCog(commands.Cog):
                  await crud.set_setting(guild_id, "ephemeral_duration", str(data["ephemeral_duration"]))
             if "discovery_weights" in data:
                  await crud.set_setting(guild_id, "discovery_weights", data["discovery_weights"])
+            if "metadata_config" in data:
+                 logger.debug(f"Dashboard: Saving metadata_config for guild {guild_id}: {data['metadata_config']}")
+                 await crud.set_setting(guild_id, "metadata_config", data["metadata_config"])
                  
             # Apply to active player if exists
             music = self.bot.get_cog("MusicCog")
@@ -344,25 +408,19 @@ class DashboardCog(commands.Cog):
             
         return web.json_response({"songs": data})
     
-    async def _handle_analytics(self, request: web.Request) -> web.Response:
-        """Get analytics data."""
+    async def _get_analytics_data(self, guild_id=None):
         if not hasattr(self.bot, "db"):
-            return web.json_response({"error": "No database"})
+            return {"error": "No database"}
         
         from src.database.crud import AnalyticsCRUD
-        crud = AnalyticsCRUD(self.bot.db) # Updated
+        crud = AnalyticsCRUD(self.bot.db)
         
-        guild_id = request.query.get("guild_id")
         gid = int(guild_id) if guild_id else None
         
-        # We only really care about getting top_songs filtered by guild here for the dashboard
-        # But the frontend might expect full stats. Let's start with top songs.
-        # Enhanced Analytics
         top_songs = await crud.get_top_songs(limit=5, guild_id=gid)
         top_users = await crud.get_top_users(limit=5, guild_id=gid)
         stats = await crud.get_total_stats(guild_id=gid)
         
-        # New requested stats
         top_liked_songs = await crud.get_top_liked_songs(limit=5)
         top_liked_artists = await crud.get_top_liked_artists(limit=5)
         top_liked_genres = await crud.get_top_liked_genres(limit=5)
@@ -370,9 +428,13 @@ class DashboardCog(commands.Cog):
         top_played_genres = await crud.get_top_played_genres(limit=5, guild_id=gid)
         top_useful_users = await crud.get_top_useful_users(limit=5)
         
+        # Get 7-day trends
+        playback_trends = await crud.get_playback_trends(days=7, guild_id=gid)
+        peak_hours = await crud.get_peak_hours(days=30, guild_id=gid)
+
         formatted_users = []
         for u in top_users:
-            d = dict(u)
+            d = dict(u) if not isinstance(u, dict) else u
             formatted_users.append({
                 "id": str(d["id"]),
                 "name": d["username"],
@@ -381,10 +443,12 @@ class DashboardCog(commands.Cog):
                 "playlists_imported": d["playlists"],
             })
 
-        return web.json_response({
+        return {
             "total_songs": stats["total_songs"],
             "total_users": stats["total_users"],
             "total_plays": stats["total_plays"],
+            "playback_trends": playback_trends,
+            "peak_hours": peak_hours,
             "top_songs": [dict(r) for r in top_songs],
             "top_users": formatted_users,
             "top_liked_songs": [dict(r) for r in top_liked_songs],
@@ -393,7 +457,12 @@ class DashboardCog(commands.Cog):
             "top_played_artists": [dict(r) for r in top_played_artists],
             "top_played_genres": [dict(r) for r in top_played_genres],
             "top_useful_users": [dict(r) for r in top_useful_users],
-        })
+        }
+
+    async def _handle_analytics(self, request: web.Request) -> web.Response:
+        guild_id = request.query.get("guild_id")
+        data = await self._get_analytics_data(guild_id)
+        return web.json_response(data)
     
     async def _handle_top_songs(self, request: web.Request) -> web.Response:
         """Get top songs list."""
@@ -454,24 +523,19 @@ class DashboardCog(commands.Cog):
                 "playback_duration": test_duration or 30
             })
 
-    async def _handle_notifications(self, request: web.Request) -> web.Response:
-        """Get notifications."""
+    async def _get_notifications_data(self):
         if not hasattr(self.bot, "db"):
-            return web.json_response({"notifications": []})
+            return {"notifications": []}
         
         from src.database.crud import SystemCRUD
         crud = SystemCRUD(self.bot.db)
         notifications = await crud.get_recent_notifications()
-        # Serialize datetime
-        # Serialize datetime
         data = []
-        from datetime import datetime
         for n in notifications:
             d = dict(n)
-            # Handle SQLite string or datetime object
             if isinstance(n["created_at"], str):
                 try:
-                    # Depending on how it's stored, it might be ISO format
+                    from datetime import datetime
                     dt = datetime.fromisoformat(n["created_at"])
                     d["created_at"] = dt.timestamp()
                 except ValueError:
@@ -481,7 +545,25 @@ class DashboardCog(commands.Cog):
             else:
                 d["created_at"] = 0
             data.append(d)
-        return web.json_response({"notifications": data})
+        return {"notifications": data}
+
+    async def _handle_notifications(self, request: web.Request) -> web.Response:
+        data = await self._get_notifications_data()
+        return web.json_response(data)
+
+    async def _handle_dashboard_init(self, request: web.Request) -> web.Response:
+        """Consolidated endpoint for dashboard initialization."""
+        status_data = await self._get_status_data()
+        guilds_data = await self._get_guilds_data()
+        analytics_data = await self._get_analytics_data()
+        notifications_data = await self._get_notifications_data()
+        
+        return web.json_response({
+            "status": status_data,
+            "guilds": guilds_data["guilds"],
+            "analytics": analytics_data,
+            "notifications": notifications_data["notifications"]
+        })
 
     async def _handle_leave_guild(self, request: web.Request) -> web.Response:
         """Force bot to leave a guild."""

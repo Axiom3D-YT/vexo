@@ -1,24 +1,22 @@
-# Python dependencies for Smart Discord Music Bot
+# Python dependencies for Vexo Music Bot
 
 # Discord
 discord.py[voice]>=2.3.0
 
-# YouTube
+# YouTube & Spotify
 yt-dlp>=2024.1.0
 ytmusicapi>=1.3.0
-
-# Spotify
 spotipy>=2.23.0
 
-# Database
+# Metadata (Fallbacks)
+discogs-client>=2.3.0
+musicbrainzngs>=0.7.1
+
+# Database & Async
 aiosqlite>=0.19.0
-
-# Web Dashboard
 aiohttp>=3.9.0
-
-# Configuration
 python-dotenv>=1.0.0
 
-# Audio processing (PyNaCl is required for voice)
+# System & Audio Processing
 PyNaCl>=1.5.0
 psutil>=5.9.0
