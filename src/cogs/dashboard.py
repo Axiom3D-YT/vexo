@@ -176,6 +176,7 @@ class DashboardCog(commands.Cog):
         self.app.router.add_get("/api/library", self._handle_library)
         self.app.router.add_get("/api/users", self._handle_users)
         self.app.router.add_get("/api/users/{user_id}/preferences", self._handle_user_prefs)
+        self.app.router.add_get("/api/users/{user_id}/details", self._handle_user_details)
         
         # Global & System
         self.app.router.add_get("/api/settings/global", self._handle_global_settings)
@@ -515,6 +516,34 @@ class DashboardCog(commands.Cog):
         crud = PreferenceCRUD(self.bot.db)
         prefs = await crud.get_all_preferences(user_id)
         return web.json_response(prefs)
+
+    async def _handle_user_details(self, request: web.Request) -> web.Response:
+        user_id = int(request.match_info["user_id"])
+        if not hasattr(self.bot, "db"):
+            return web.json_response({"error": "No database"}, status=500)
+        
+        from src.database.crud import PreferenceCRUD, AnalyticsCRUD
+        pref_crud = PreferenceCRUD(self.bot.db)
+        
+        # Export all handles user info, preferences, reactions, and playlists
+        details = await pref_crud.export_all(user_id)
+        
+        # Format dates for JSON
+        if details.get("user"):
+            user = dict(details["user"])
+            if user.get("last_active") and hasattr(user["last_active"], "isoformat"):
+                user["last_active"] = user["last_active"].isoformat()
+            details["user"] = user
+            
+        for r in details.get("reactions", []):
+            if r.get("created_at") and hasattr(r["created_at"], "isoformat"):
+                r["created_at"] = r["created_at"].isoformat()
+
+        for p in details.get("imported_playlists", []):
+            if p.get("created_at") and hasattr(p["created_at"], "isoformat"):
+                p["created_at"] = p["created_at"].isoformat()
+
+        return web.json_response(details)
     
     async def _api_get_logs(self, request: web.Request) -> web.Response:
         return web.json_response({"logs": list(self.ws_manager.recent_logs)})

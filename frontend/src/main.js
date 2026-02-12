@@ -162,6 +162,112 @@ function addLogEntry(log) {
     }
 }
 
+// User Profile Functions
+async function viewUser(userId) {
+    const modal = document.getElementById('user-modal');
+    if (!modal) return;
+
+    modal.classList.add('open');
+    showModalSkeleton();
+
+    try {
+        const res = await fetch(`/api/users/${userId}/details`);
+        const data = await res.json();
+        renderUserProfile(data);
+    } catch (e) {
+        console.error('Failed to fetch user details', e);
+        document.getElementById('user-modal-content').innerHTML = '<div style="padding: 2rem; text-align: center;">Failed to load profile</div>';
+    }
+}
+
+function closeUserModal() {
+    const modal = document.getElementById('user-modal');
+    if (modal) modal.classList.remove('open');
+}
+
+function showModalSkeleton() {
+    document.getElementById('user-modal-name').innerHTML = '<div class="skeleton skeleton-text" style="width: 150px"></div>';
+    document.getElementById('user-modal-id').innerHTML = '<div class="skeleton skeleton-text" style="width: 100px"></div>';
+    document.getElementById('user-modal-plays').innerHTML = '...';
+    document.getElementById('user-modal-reactions').innerHTML = '...';
+    document.getElementById('user-modal-playlists').innerHTML = '...';
+}
+
+function renderUserProfile(data) {
+    const user = data.user || {};
+    document.getElementById('user-modal-name').textContent = user.username || 'Unknown User';
+    document.getElementById('user-modal-id').textContent = `ID: ${user.id}`;
+    document.getElementById('user-modal-avatar').textContent = (user.username || '?').charAt(0);
+
+    // Summary stats
+    document.getElementById('user-modal-plays').textContent = data.reactions.length + (data.imported_playlists.length * 10); // Approximation if we don't have play count here
+    document.getElementById('user-modal-reactions').textContent = data.reactions.length;
+    document.getElementById('user-modal-playlists').textContent = data.imported_playlists.length;
+
+    // Reactions List
+    const reactionsList = document.getElementById('user-modal-reactions-list');
+    if (data.reactions.length === 0) {
+        reactionsList.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1rem;">No likes yet</td></tr>';
+    } else {
+        reactionsList.innerHTML = data.reactions.map(r => `
+            <tr>
+                <td>${r.title}</td>
+                <td>${r.artist_name}</td>
+                <td>${new Date(r.created_at).toLocaleDateString()}</td>
+            </tr>
+        `).join('');
+    }
+
+    // Playlists List
+    const playlistsList = document.getElementById('user-modal-playlists-list');
+    if (data.imported_playlists.length === 0) {
+        playlistsList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No playlists imported</div>';
+    } else {
+        playlistsList.innerHTML = data.imported_playlists.map(p => `
+            <div class="server-nav-item" style="display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border);">
+                <span>${p.name || 'Untitled Playlist'}</span>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">${p.source || 'spotify'}</span>
+            </div>
+        `).join('');
+    }
+
+    // Preferences List
+    const prefsList = document.getElementById('user-modal-prefs-list');
+    const prefs = data.preferences || {};
+    let prefsHtml = '';
+
+    // Flatten and sort preferences
+    const allPrefs = [];
+    for (const [type, keys] of Object.entries(prefs)) {
+        for (const [key, score] of Object.entries(keys)) {
+            allPrefs.push({ type, key, score });
+        }
+    }
+    allPrefs.sort((a, b) => b.score - a.score);
+
+    if (allPrefs.length === 0) {
+        prefsHtml = '<div style="grid-column: span 2; text-align: center; color: var(--text-muted);">No affinity data</div>';
+    } else {
+        prefsHtml = allPrefs.slice(0, 20).map(p => `
+            <div style="background: var(--bg-card); padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; display: flex; justify-content: space-between;">
+                <span style="color: var(--text-muted);">${p.type === 'genre' ? '🏷️' : '👨‍🎤'} ${p.key}</span>
+                <span style="font-weight: 600;">${p.score.toFixed(1)}</span>
+            </div>
+        `).join('');
+    }
+    prefsList.innerHTML = prefsHtml;
+}
+
+window.viewUser = viewUser;
+window.closeUserModal = closeUserModal;
+window.switchModalTab = function (tabName) {
+    document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.modal-tab[data-modal-tab="${tabName}"]`).classList.add('active');
+
+    document.querySelectorAll('.modal-tab-pane').forEach(p => p.style.display = 'none');
+    document.getElementById(`modal-${tabName}`).style.display = 'block';
+};
+
 async function fetchDashboardInit() {
     showSkeletons();
     try {
@@ -464,7 +570,7 @@ function updateAnalytics(data) {
                 userList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No users active yet</div>';
             } else {
                 userList.innerHTML = data.top_users.slice(0, 10).map(u => `
-                    <div class="user-item" onclick="viewUser('${u.id}')">
+                    <div class="user-item" style="cursor: pointer" onclick="viewUser('${u.id}')">
                         <div class="user-avatar">${(u.name || '?').charAt(0)}</div>
                         <div class="user-info">
                             <div class="user-name">${u.name || 'Unknown'}</div>
@@ -726,7 +832,7 @@ function updateUserDirectory(users) {
     }
 
     list.innerHTML = users.map(u => `
-        <div class="user-item">
+        <div class="user-item" style="cursor: pointer" onclick="viewUser('${u.id}')">
             <div class="user-avatar">${(u.username || '?').charAt(0)}</div>
             <div class="user-info">
                 <div class="user-name">${u.username || 'Unknown'}</div>
