@@ -129,7 +129,7 @@ STRICT GUIDELINES: Be extremely concise. Focus on one feeling or image. Let the 
                             json_content = json.loads(content)
                             script_text = json_content.get("text")
                             elapsed = time.time() - start_time
-                            logger.info(f"Groq generated script for '{song}' in {elapsed:.2f}s")
+                            logger.info(f"Groq generated script for '{song_title}' in {elapsed:.2f}s")
                             return script_text
                         except json.JSONDecodeError:
                             logger.error(f"Groq returned invalid JSON: {content}")
