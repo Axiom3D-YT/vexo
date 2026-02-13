@@ -1232,14 +1232,18 @@ async function saveServerSettings() {
         metadata_config: {
             strategy: document.getElementById('meta-strategy').value,
             engines: {
-                spotify: { enabled: true, priority: parseInt(document.getElementById('meta-spotify-prio').value) || 1 },
+                groq: {
+                    enabled: document.getElementById('meta-groq-enabled').checked,
+                    priority: parseInt(document.getElementById('meta-groq-prio').value) || 1
+                },
+                spotify: { enabled: true, priority: parseInt(document.getElementById('meta-spotify-prio').value) || 2 },
                 discogs: {
                     enabled: document.getElementById('meta-discogs-enabled').checked,
-                    priority: parseInt(document.getElementById('meta-discogs-prio').value) || 2
+                    priority: parseInt(document.getElementById('meta-discogs-prio').value) || 3
                 },
                 musicbrainz: {
                     enabled: document.getElementById('meta-mb-enabled').checked,
-                    priority: parseInt(document.getElementById('meta-mb-prio').value) || 3
+                    priority: parseInt(document.getElementById('meta-mb-prio').value) || 4
                 }
             }
         }
