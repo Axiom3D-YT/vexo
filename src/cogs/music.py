@@ -1918,6 +1918,8 @@ class MusicCog(commands.Cog):
         tasks = []
         source_names = []
         
+        for name, _ in active_engines:
+            if name in engine_map:
                 # MUST wrap coroutines in Tasks for asyncio.wait in Python 3.11+
                 # AND to keep track of them for result mapping
                 task = asyncio.create_task(engine_map[name]())
