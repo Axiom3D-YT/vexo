@@ -38,6 +38,7 @@ class QueueItem:
     genre: str | None = None
     year: int | None = None
     script_text: str | None = None # Cache for AI script
+    script_spoken: bool = False  # Track if script was already spoken
     metadata_attempted: bool = False
 
 
@@ -718,6 +719,16 @@ class MusicCog(commands.Cog):
         
         try:
             while player.voice_client and player.voice_client.is_connected():
+                # Cancel any pending TTS from previous song
+                if player.tts_task and not player.tts_task.done():
+                    player.tts_task.cancel()
+                    try:
+                        await player.tts_task  # Wait for cancellation to complete
+                    except asyncio.CancelledError:
+                        pass  # Expected
+                    except Exception as e:
+                        logger.error(f"Error cancelling TTS task: {e}")
+                
                 player.skip_votes.clear()
                 # Get next from priority queue
                 try:
@@ -1217,7 +1228,7 @@ class MusicCog(commands.Cog):
             if player.pending_script:
                 await self._speak_and_send_script(player, player.pending_script, tts_enabled, tts_voice, tts_slow, send_text, channel)
                 player.pending_script = None
-            raise  # Re-raise to properly handle the cancellation
+            # Don't re-raise - let the task finish cleanly
 
     async def _speak_and_send_script(self, player: GuildPlayer, script_text: str, tts_enabled: bool, tts_voice: str, tts_slow: bool, send_text: bool, channel):
         """Speak via TTS and/or send as text message."""
