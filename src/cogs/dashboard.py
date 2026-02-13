@@ -296,6 +296,11 @@ class DashboardCog(commands.Cog):
     async def _handle_update_settings(self, request: web.Request) -> web.Response:
         guild_id = int(request.match_info["guild_id"])
         data = await request.json()
+        logger.info(f"Dashboard settings update for guild {guild_id}. Data keys: {list(data.keys())}")
+        if "groq_model" in data:
+            logger.info(f"Received groq_model setting: {data['groq_model']}")
+        else:
+            logger.warning("groq_model MISSING from settings payload")
         
         if hasattr(self.bot, "db"):
             from src.database.crud import GuildCRUD
