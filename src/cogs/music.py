@@ -719,16 +719,6 @@ class MusicCog(commands.Cog):
         
         try:
             while player.voice_client and player.voice_client.is_connected():
-                # Cancel any pending TTS from previous song
-                if player.tts_task and not player.tts_task.done():
-                    player.tts_task.cancel()
-                    try:
-                        await player.tts_task  # Wait for cancellation to complete
-                    except asyncio.CancelledError:
-                        pass  # Expected
-                    except Exception as e:
-                        logger.error(f"Error cancelling TTS task: {e}")
-                
                 player.skip_votes.clear()
                 # Get next from priority queue
                 try:
@@ -895,9 +885,6 @@ class MusicCog(commands.Cog):
                     logger.info(f"Playing: {item.title} | {item.artist} | {item.genre or 'Unknown Genre'} | {log_user} | {log_source}")
                     # Send Now Playing embed
                     await self._send_now_playing(player)
-
-                    # Trigger DJ Script Generation (Fire-and-forget task)
-                    asyncio.create_task(self._send_dj_script(player, item))
                     
                     # ---------------- PLAYBACK WATCHDOG ----------------
                     test_mode = False
@@ -1173,23 +1160,25 @@ class MusicCog(commands.Cog):
                 return
 
             # 4. Calculate when to speak/display based on timing offset
+            # The item parameter is the NEXT song to be announced
+            # We need to use the CURRENT song's duration to calculate timing
             # Negative offset = speak BEFORE current song ends (e.g., -10 = 10s before end)
-            # Positive offset = speak AFTER new song starts (e.g., +5 = 5s after start)
-            # Zero offset = speak immediately when song starts
+            # Positive offset = speak AFTER next song starts (e.g., +5 = 5s after start)
+            # Zero offset = speak immediately when next song starts
             
             delay_seconds = 0
-            if groq_offset < 0 and item.duration_seconds:
-                # Negative: calculate when to speak before song ends
-                # speak_at = duration - abs(offset)
-                speak_at = max(0, item.duration_seconds + groq_offset)  # groq_offset is negative
+            if groq_offset < 0 and player.current and player.current.duration_seconds:
+                # Negative: calculate when to speak before CURRENT song ends
+                # speak_at = current_duration - abs(offset)
+                speak_at = max(0, player.current.duration_seconds + groq_offset)  # groq_offset is negative
                 delay_seconds = speak_at
-                logger.debug(f"TTS scheduled for {speak_at}s (duration={item.duration_seconds}s, offset={groq_offset}s)")
+                logger.debug(f"TTS for '{item.title}' scheduled for {speak_at}s (current song duration={player.current.duration_seconds}s, offset={groq_offset}s)")
             elif groq_offset > 0:
-                # Positive: speak X seconds after song starts
+                # Positive: speak X seconds after NEXT song starts
                 delay_seconds = groq_offset
-                logger.debug(f"TTS scheduled for +{groq_offset}s after start")
+                logger.debug(f"TTS for '{item.title}' scheduled for +{groq_offset}s after it starts")
             else:
-                # Zero: speak immediately
+                # Zero: speak immediately when NEXT song starts
                 delay_seconds = 0
 
             # 5. Schedule TTS (if enabled) and send text
@@ -1435,6 +1424,10 @@ class MusicCog(commands.Cog):
                     
                     # USER REQUEST: Log confirmed proactive discovery item
                     logger.info(f"⏭️ Next song confirmed for guild {player.guild_id}: {item.title} by {item.artist} | Strategy: {item.discovery_source} ({item.discovery_reason})")
+                    
+                    # Schedule TTS to announce this next song before current song ends
+                    asyncio.create_task(self._send_dj_script(player, item))
+                    
                     break
 
             # 2. Extract stream URL for the first item in queue if missing
