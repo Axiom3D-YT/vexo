@@ -1891,6 +1891,9 @@ class MusicCog(commands.Cog):
                             if match:
                                 year = int(match.group(0))
                         except: pass
+                    
+                    # Log what Groq extracted
+                    logger.info(f"Groq extracted: Song='{result.get('song', 'N/A')}' | Artist='{result.get('artist', 'N/A')}' | Year={year or 'N/A'} | Genre={result.get('genre', 'N/A')}")
                         
                     return {"genres": genres, "year": year}
                     
