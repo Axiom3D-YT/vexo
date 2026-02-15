@@ -135,3 +135,26 @@ class SongNormalizer:
             original_title=title,
             original_artist=artist,
         )
+    async def normalize_to_yt(self, title: str, artist: str) -> "YTTrack | None":
+        """
+        Normalize and return the full YTTrack object.
+        """
+        clean_title = self.clean_title(title)
+        clean_artist = self.clean_artist(artist)
+        
+        # Search YouTube Music
+        search_query = f"{clean_artist} {clean_title}"
+        results = await self.youtube.search(search_query, filter_type="songs", limit=1)
+        
+        if results:
+            return results[0]
+            
+        # Fallback
+        fallback_query = f"{artist} {title}"
+        results = await self.youtube.search(fallback_query, filter_type="songs", limit=1)
+        
+        if results:
+            return results[0]
+            
+        logger.warning(f"Could not normalize to YT track: {artist} - {title}")
+        return None
