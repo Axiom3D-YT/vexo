@@ -193,6 +193,59 @@ class NowPlayingView(discord.ui.View):
             await interaction.response.defer()
 
 
+class LinkInputModal(discord.ui.Modal, title="Enter Song Link"):
+    """Modal for entering a direct link."""
+    
+    url_input = discord.ui.TextInput(
+        label="YouTube or Spotify Link",
+        placeholder="https://...",
+        required=True
+    )
+    
+    def __init__(self, cog: "MusicCog", player: GuildPlayer):
+        super().__init__()
+        self.cog = cog
+        self.player = player
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        # Use the helper we extracted
+        await self.cog._process_link(interaction, self.player, self.url_input.value)
+
+
+class SearchVerificationView(discord.ui.View):
+    """View to verify low-confidence search results."""
+    
+    def __init__(self, cog: "MusicCog", player: GuildPlayer, original_query: str, found_track: YTTrack):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.player = player
+        self.query = original_query
+        self.track = found_track
+        self.value = None # None: Timeout, True: Confirm, False: Cancel
+    
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green, emoji="✅")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = True
+        self.stop()
+        if not interaction.response.is_done():
+            await interaction.response.defer()
+            
+    @discord.ui.button(label="Enter Link", style=discord.ButtonStyle.blurple, emoji="🔗")
+    async def enter_link(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Open Modal
+        await interaction.response.send_modal(LinkInputModal(self.cog, self.player))
+        self.value = "LINK" # Special value
+        self.stop()
+        
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red, emoji="❌")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = False
+        self.stop()
+        if not interaction.response.is_done():
+            await interaction.response.defer()
+
+
 class MusicCog(commands.Cog):
     """Music playback commands and queue management."""
     
