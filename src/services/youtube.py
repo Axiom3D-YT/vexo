@@ -84,10 +84,33 @@ class YouTubeService:
         """Parse YouTube URL to (type, id)."""
         import re
         
+        # Check domain first to avoid false positives (e.g. Spotify)
+        if not any(domain in url for domain in ["youtube.com", "youtu.be", "music.youtube.com"]):
+            return None
+        
         # Video ID
-        video_pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+        # Matches:
+        # - youtube.com/watch?v=ID
+        # - youtube.com/v/ID
+        # - youtube.com/embed/ID
+        # - youtu.be/ID
+        # - music.youtube.com/watch?v=ID
+        video_pattern = r"(?:v=|\/|embed\/|youtu\.be\/)([0-9A-Za-z_-]{11})"
         match = re.search(video_pattern, url)
         if match:
+            # If it's a playlist URL, it might have a video ID too (watch?v=...&list=...), 
+            # but usually we want the video if 'v=' is present, UNLESS the user explicitly wants the playlist.
+            # However, the command logic checks parse_url. 
+            # If I return video, it plays video. 
+            # If I return playlist, it plays playlist.
+            # Let's prioritize playlist if 'list=' is present AND it's not a watch URL? 
+            # actually standard behavior is usually:
+            # - watch?v=ID&list=PID -> Play Video (and maybe queue playlist? but here we obey the return type)
+            # The user asked for "link", if they give a watch link in a playlist context, 
+            # they probably want the song. If they give a playlist link `youtube.com/playlist?list=...`, 
+            # there is no `v=`.
+            
+            # So, if `v=` exists, treat as video.
             return "video", match.group(1)
             
         # Playlist ID
